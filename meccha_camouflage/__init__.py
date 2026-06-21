@@ -61,6 +61,9 @@ OFFSETS = {
     "FMinimalViewInfo::Location": 0x0,
     "FMinimalViewInfo::Rotation": 0x18,
     "FMinimalViewInfo::FOV": 0x30,
+    "FTViewTarget::POV": 0x10,
+    "FTransform::Rotation": 0x0,
+    "FTransform::Translation": 0x10,
 }
 
 PROCESS_NAME = "PenguinHotel-Win64-Shipping.exe"
@@ -343,8 +346,13 @@ class GameReader:
         "APlayerController::AcknowledgedPawn": ("PlayerController", "AcknowledgedPawn"),
         "APlayerController::PlayerCameraManager": ("PlayerController", "PlayerCameraManager"),
         "APlayerCameraManager::CameraCachePrivate": ("PlayerCameraManager", "CameraCachePrivate"),
+        "APlayerCameraManager::ViewTarget": ("PlayerCameraManager", "ViewTarget"),
         "AActor::RootComponent": ("Actor", "RootComponent"),
+        "AActor::Owner": ("Actor", "Owner"),
         "USceneComponent::RelativeLocation": ("SceneComponent", "RelativeLocation"),
+        "USceneComponent::ComponentToWorld": ("SceneComponent", "ComponentToWorld"),
+        "FTransform::Translation": (None, None),
+        "ACharacter::Mesh": ("Character", "Mesh"),
     }
 
     def __init__(self):
@@ -358,7 +366,9 @@ class GameReader:
         self.resolver = OffsetResolver(self.pm, self.objects)
         self.offsets = self.resolver.resolve_map(self.OFFSET_MAP)
         for k in ("FCameraCacheEntry::POV", "FMinimalViewInfo::Location",
-                  "FMinimalViewInfo::Rotation", "FMinimalViewInfo::FOV"):
+                  "FMinimalViewInfo::Rotation", "FMinimalViewInfo::FOV",
+                  "FTViewTarget::POV", "FTransform::Rotation",
+                  "FTransform::Translation"):
             self.offsets[k] = OFFSETS[k]
         self.gengine = self.objects.find_first_instance("GameEngine")
         if not self.gengine: raise RuntimeError("GEngine not found")
@@ -416,6 +426,11 @@ class GameReader:
         if not lp: return 0
         return rp(self.pm, lp + self.offsets["UPlayer::PlayerController"])
 
+    def _read_pov(self, addr):
+        return {"loc": rvec3(self.pm, addr + self.offsets["FMinimalViewInfo::Location"]),
+                "rot": rvec3(self.pm, addr + self.offsets["FMinimalViewInfo::Rotation"]),
+                "fov": rfloat(self.pm, addr + self.offsets["FMinimalViewInfo::FOV"])}
+
     def get_camera(self):
         w = self._get_world()
         pc = self._get_local_controller(w)
@@ -423,16 +438,56 @@ class GameReader:
         cam = rp(self.pm, pc + self.offsets["APlayerController::PlayerCameraManager"])
         if not cam: return None
         cc = cam + self.offsets["APlayerCameraManager::CameraCachePrivate"]
-        pov = cc + self.offsets["FCameraCacheEntry::POV"]
-        loc = rvec3(self.pm, pov + self.offsets["FMinimalViewInfo::Location"])
-        rot = rvec3(self.pm, pov + self.offsets["FMinimalViewInfo::Rotation"])
-        fov = rfloat(self.pm, pov + self.offsets["FMinimalViewInfo::FOV"])
-        return {"loc": loc, "rot": rot, "fov": fov}
+        try:
+            camera = self._read_pov(cc + self.offsets["FCameraCacheEntry::POV"])
+        except Exception:
+            camera = None
+        if (camera is None or
+            (abs(camera["loc"][0]) < 0.01 and abs(camera["loc"][1]) < 0.01 and abs(camera["loc"][2]) < 0.01) or
+            camera["fov"] <= 0.0):
+            vt = self.offsets.get("APlayerCameraManager::ViewTarget")
+            if vt is not None:
+                try:
+                    camera = self._read_pov(cam + vt + self.offsets["FTViewTarget::POV"])
+                except Exception:
+                    camera = None
+        if camera is None or camera["fov"] <= 0.0:
+            return None
+        return camera
 
     def _class_name(self, obj):
         if not obj: return ""
         cls = self.obj_class(obj) if hasattr(self, 'obj_class') else rp(self.pm, obj + OFFSETS["UObjectBase::ClassPrivate"])
         return self.objects.obj_name(cls) if cls else ""
+
+    def _component_world_pos(self, component):
+        if not component: return None
+        ctw = self.offsets.get("USceneComponent::ComponentToWorld")
+        trans = self.offsets.get("FTransform::Translation")
+        if ctw is None or trans is None: return None
+        try: return rvec3(self.pm, component + ctw + trans)
+        except: return None
+
+    def _actor_position(self, actor):
+        if not actor: return None
+        root = rp(self.pm, actor + self.offsets["AActor::RootComponent"])
+        if root:
+            try:
+                pos = rvec3(self.pm, root + self.offsets["USceneComponent::RelativeLocation"])
+                if not (abs(pos[0]) < 0.01 and abs(pos[1]) < 0.01 and abs(pos[2]) < 0.01):
+                    return pos
+            except: pass
+            pos = self._component_world_pos(root)
+            if pos is not None: return pos
+        mesh = self.offsets.get("ACharacter::Mesh")
+        if mesh is not None:
+            try:
+                m = rp(self.pm, actor + mesh)
+                if m:
+                    pos = self._component_world_pos(m)
+                    if pos is not None: return pos
+            except: pass
+        return None
 
     def iter_players(self, include_local=False, team_filter=False):
         w = self._get_world()
@@ -444,9 +499,9 @@ class GameReader:
         lpc = self._class_name(lp)
 
         if include_local and lp:
-            rt = rp(self.pm, lp + self.offsets["AActor::RootComponent"])
-            if rt:
-                yield True, rvec3(self.pm, rt + self.offsets["USceneComponent::RelativeLocation"]), 0, lp
+            pos = self._actor_position(lp)
+            if pos is not None:
+                yield True, pos, 0, lp
 
         yielded = 0
         if gs:
@@ -461,10 +516,10 @@ class GameReader:
                     if not pnc: continue
                     if team_filter and lpc and pnc == lpc: continue
                     if "Spectate" in pnc: continue
-                    rt = rp(self.pm, pn + self.offsets["AActor::RootComponent"])
-                    if not rt: continue
+                    pos = self._actor_position(pn)
+                    if pos is None: continue
                     yielded += 1
-                    yield False, rvec3(self.pm, rt + self.offsets["USceneComponent::RelativeLocation"]), i, pn
+                    yield False, pos, i, pn
 
         if yielded == 0:
             pl_off = self.resolver.resolve("World", "PersistentLevel") or 0x30
@@ -478,9 +533,9 @@ class GameReader:
                         if not a or a == lp: continue
                         cn = self._class_name(a)
                         if not cn or "Character" not in cn: continue
-                        rt = rp(self.pm, a + self.offsets["AActor::RootComponent"])
-                        if not rt: continue
-                        yield False, rvec3(self.pm, rt + self.offsets["USceneComponent::RelativeLocation"]), i, a
+                        pos = self._actor_position(a)
+                        if pos is None: continue
+                        yield False, pos, i, a
 
     def find_player_pawn(self):
         w = self._get_world()
