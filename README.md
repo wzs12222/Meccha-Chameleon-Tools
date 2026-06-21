@@ -2,7 +2,8 @@
   <h1>Meccha Camouflage</h1>
   <p><strong>External ESP · Aimbot · Active Camouflage</strong></p>
   <p>for <em>MECCHA CHAMELEON</em> (UE5)</p>
-  <br>
+  <a href="https://github.com/SilentJMA/Meccha-Camouflage-Tools/releases/latest"><img alt="Download" src="https://img.shields.io/badge/Download-Latest_Release-blue?style=for-the-badge&logo=github"></a>
+  <br><br>
 </div>
 
 ## Features
@@ -22,12 +23,20 @@ All features are fully external — no DLL injection, no UE4SS dependency, no DX
 
 ## Quick Start
 
+### Option 1 — Standalone (no Python required)
+
+1. Download `MecchaCamouflage.exe` from the [latest release](https://github.com/SilentJMA/Meccha-Camouflage-Tools/releases/latest)
+2. Launch **MECCHA CHAMELEON** (windowed / borderless)
+3. Run `MecchaCamouflage.exe`
+
+### Option 2 — From source
+
 ```powershell
 pip install -r requirements.txt
 python -m meccha_camouflage
 ```
 
-**Requirements:** Python 3.11+, Windows 10/11, game running in windowed/borderless mode.
+**Requirements:** Windows 10/11, game running in windowed/borderless mode.
 
 | Dependency | Purpose |
 |-----------|---------|
