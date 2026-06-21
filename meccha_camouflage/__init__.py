@@ -1367,6 +1367,35 @@ class Overlay(QWidget):
         ))
 
 # ---------------------------------------------------------------------------
+# Toggle button
+# ---------------------------------------------------------------------------
+class ToggleButton(QWidget):
+    def __init__(self, menu: QWidget):
+        super().__init__()
+        self._menu = menu
+        self.setWindowFlags(
+            Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
+        )
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setFixedSize(36, 36)
+        self.setGeometry(10, 10, 36, 36)
+        self.show()
+
+    def mousePressEvent(self, event):
+        self._menu.setVisible(not self._menu.isVisible())
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setBrush(QColor(0, 255, 0, 170))
+        p.setPen(Qt.NoPen)
+        p.drawRoundedRect(0, 0, 36, 36, 8, 8)
+        p.setPen(QColor(0, 0, 0))
+        f = QFont("Segoe UI", 16, QFont.Bold)
+        p.setFont(f)
+        p.drawText(self.rect(), Qt.AlignCenter, "≡")
+
+# ---------------------------------------------------------------------------
 # World-to-screen
 # ---------------------------------------------------------------------------
 def rotation_to_axes(rot):
@@ -1417,6 +1446,7 @@ def main():
 
     menu = Menu(config)
     overlay = Overlay(reader, config, menu)
+    toggle = ToggleButton(menu)
     overlay.show()
     menu.show()
 
