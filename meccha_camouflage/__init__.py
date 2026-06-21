@@ -346,13 +346,9 @@ class GameReader:
         "APlayerController::AcknowledgedPawn": ("PlayerController", "AcknowledgedPawn"),
         "APlayerController::PlayerCameraManager": ("PlayerController", "PlayerCameraManager"),
         "APlayerCameraManager::CameraCachePrivate": ("PlayerCameraManager", "CameraCachePrivate"),
-        "APlayerCameraManager::ViewTarget": ("PlayerCameraManager", "ViewTarget"),
         "AActor::RootComponent": ("Actor", "RootComponent"),
         "AActor::Owner": ("Actor", "Owner"),
         "USceneComponent::RelativeLocation": ("SceneComponent", "RelativeLocation"),
-        "USceneComponent::ComponentToWorld": ("SceneComponent", "ComponentToWorld"),
-        "FTransform::Translation": (None, None),
-        "ACharacter::Mesh": ("Character", "Mesh"),
     }
 
     def __init__(self):
@@ -368,8 +364,9 @@ class GameReader:
         for k in ("FCameraCacheEntry::POV", "FMinimalViewInfo::Location",
                   "FMinimalViewInfo::Rotation", "FMinimalViewInfo::FOV",
                   "FTViewTarget::POV", "FTransform::Rotation",
-                  "FTransform::Translation"):
-            self.offsets[k] = OFFSETS[k]
+                  "FTransform::Translation", "USceneComponent::ComponentToWorld",
+                  "APlayerCameraManager::ViewTarget", "ACharacter::Mesh"):
+            self.offsets.setdefault(k, OFFSETS.get(k))
         self.gengine = self.objects.find_first_instance("GameEngine")
         if not self.gengine: raise RuntimeError("GEngine not found")
 
@@ -463,6 +460,10 @@ class GameReader:
     def _component_world_pos(self, component):
         if not component: return None
         ctw = self.offsets.get("USceneComponent::ComponentToWorld")
+        if ctw is None:
+            ctw = self.resolver.resolve("SceneComponent", "ComponentToWorld")
+            if ctw is not None:
+                self.offsets["USceneComponent::ComponentToWorld"] = ctw
         trans = self.offsets.get("FTransform::Translation")
         if ctw is None or trans is None: return None
         try: return rvec3(self.pm, component + ctw + trans)
