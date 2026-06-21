@@ -692,7 +692,7 @@ class CamoApplier:
 class Config:
     # ESP
     esp_enabled: bool = True
-    esp_style: str = "dot"          # "dot" | "box" | "both"
+    esp_style: str = "both"         # "dot" | "box" | "both"
     corner_box: bool = False
     skeleton_esp: bool = False
     show_local: bool = True
@@ -702,7 +702,7 @@ class Config:
     show_shield: bool = False
     show_weapon: bool = False
     snap_lines: bool = True
-    team_filter: bool = True
+    team_filter: bool = False
     max_distance: int = 0           # 0 = unlimited
     enemy_color: Tuple[int, int, int] = (255, 0, 0)
     local_color: Tuple[int, int, int] = (0, 255, 0)
