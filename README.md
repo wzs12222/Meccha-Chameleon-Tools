@@ -1,12 +1,13 @@
 # Meccha Chameleon Tools
 
-External ESP - Aimbot - Radar for MECCA CHAMELEON (UE5)
+External ESP - Aimbot - Radar for MECCA CHAMELEON (UE5) - Camouflage
 
 ## Features
 
 | Category | Capabilities |
 |----------|-------------|
 | **ESP** | Dot / 2D Box / Skeleton overlay, names, distance, snap lines, team filter, distance scaling |
+| **Camouflage** | Using F10 you inhert the colors of your location, this will freeze the game for ~1min - WIP |
 | **Health Bars** | Health bar and shield bar, adjustable model height and Y offset |
 | **Radar** | External minimap radar with configurable size and range |
 | **Aimbot** | Smooth aim assist, FOV circle, rebindable key |
@@ -49,6 +50,7 @@ Requirements: Windows 10/11, game running in windowed/borderless mode.
 | Key | Action |
 |-----|--------|
 | Insert / F1 | Toggle settings menu |
+| F10 | Camouflage|
 
 ### Settings Tabs
 
