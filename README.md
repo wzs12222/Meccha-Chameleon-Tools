@@ -113,8 +113,29 @@ The FNameResolver auto-detects UE4, UE5, and custom header-layout variants. The 
 |---------|-------------|-----|
 | Game attach failed | Process name mismatch | Verify PenguinHotel-Win64-Shipping.exe is running |
 | ESP shows nothing | Not in a match with players | Load into a lobby or match |
+| Only 1-2 players detected (4+ in game) | Team filter on; all use same character class | Disable Team Filter in the ESP tab (or update to v1.2.1 where it defaults to off) |
+| Snap lines not visible | w2s dropped off-screen projections | Update to v1.2.1 — off-screen players now correctly draw lines to screen edge |
 | Aimbot not firing | Key binding mismatch | Re-record the aim key in the AIMBOT tab |
 | Radar not showing | Radar disabled | Enable Radar Enabled in the RADAR tab |
+
+---
+
+## Changelog
+
+### v1.2.1 - Player count & snap line fixes
+
+- **Fix: Only 1-2 players detected** - Team filter default changed to False. Previously, players sharing the same character class as the local player were filtered out; this caused most or all enemies to be invisible in modes where everyone uses the same Blueprint class.
+- **Fix: Snap lines not drawing** - w2s() no longer returns None for off-screen positions. Snap lines now draw from screen bottom-center to the player angular position at the screen edge. On-screen elements (dots, health bars, labels) are clamped to the visible area.
+- **Added** clamp_screen() helper for clean off-screen element handling.
+
+### v1.2.0 - Tabbed UI
+
+- Sidebar with five tabs: ESP, HEALTH, RADAR, AIMBOT, COLORS
+- All toggles, sliders, and color pickers organised per-tab
+- Rebindable aim key with Insert/F1 menu toggle
+- First standalone release with PyInstaller build
+
+### v1.1.x - Initial releases
 
 ---
 

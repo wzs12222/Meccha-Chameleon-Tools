@@ -19,7 +19,7 @@ class Config:
     show_names: bool = True
     show_distance: bool = True
     snap_lines: bool = True
-    team_filter: bool = True
+    team_filter: bool = False
 
     # Colors
     enemy_color: Tuple[int, int, int] = (255, 0, 0)

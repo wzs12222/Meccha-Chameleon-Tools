@@ -35,6 +35,7 @@ def rotation_to_axes(rot):
 
 
 def w2s(world_pos, camera, screen_w, screen_h):
+    """Project world pos to screen. Returns None only if behind camera."""
     cam_loc = camera["loc"]
     cam_rot = camera["rot"]
     fov = camera["fov"]
@@ -53,9 +54,12 @@ def w2s(world_pos, camera, screen_w, screen_h):
     ndc_y = view_z / (view_x * tan_hfov / aspect)
     screen_x = (1.0 + ndc_x) * screen_w / 2.0
     screen_y = (1.0 - ndc_y) * screen_h / 2.0
-    if not (0 <= screen_x <= screen_w and 0 <= screen_y <= screen_h):
-        return None
     return (screen_x, screen_y)
+
+
+def clamp_screen(x, y, w, h, margin=10):
+    """Clamp coordinates within visible area (with margin)."""
+    return (max(margin, min(w - margin, x)), max(margin, min(h - margin, y)))
 
 
 # ---------------------------------------------------------------------------
@@ -695,10 +699,15 @@ class Overlay(QWidget):
             sy += self.config.box_y_offset
             color = self.config.local_color if is_local else self.config.enemy_color
 
+            # Clamped coords for on-screen elements (dots, bars, labels)
+            # Snap lines use raw sx/sy so they reach screen edges
+            dsx, dsy = clamp_screen(sx, sy - self.config.box_y_offset, w, h)
+            dsy += self.config.box_y_offset
+
             # Dot ESP
             if self.config.dot_esp:
                 radius = int(self.config.dot_radius * scale)
-                self._draw_dot(painter, sx, sy, max(2, radius), color)
+                self._draw_dot(painter, dsx, dsy, max(2, radius), color)
 
             # 2D Box ESP
             if self.config.box_esp:
@@ -724,8 +733,8 @@ class Overlay(QWidget):
                 health_info = self.esp.get_health(actor, ps)
                 if health_info and health_info[0] is not None:
                     hp, sh = health_info
-                    bar_x = sx - 12 * scale
-                    bar_y = sy - 20 * scale
+                    bar_x = dsx - 12 * scale
+                    bar_y = dsy - 20 * scale
                     draw_health_bar(painter, bar_x, bar_y, 24 * scale, 4, hp, sh if self.config.shield_bar else None)
 
             # Snap lines
@@ -743,8 +752,8 @@ class Overlay(QWidget):
             if label_parts:
                 painter.setPen(QPen(QColor(*color)))
                 text = " | ".join(label_parts)
-                label_x = int(sx + self.config.dot_radius * scale + 4)
-                label_y = int(sy)
+                label_x = int(dsx + self.config.dot_radius * scale + 4)
+                label_y = int(dsy)
                 painter.drawText(label_x, label_y, text)
 
         # Player count
