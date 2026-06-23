@@ -1,4 +1,4 @@
-<img width="504" height="561" alt="image" src="https://github.com/user-attachments/assets/a83d6aaa-b6aa-40c0-b6d8-2f2fa54d9856" />
+<img width="512" height="572" alt="Preview" src="https://private-user-images.githubusercontent.com/16384750/611730347-11c72fa0-81ac-40dc-9356-75ba0d5efe23.png?jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3ODIyMDkwNzEsIm5iZiI6MTc4MjIwODc3MSwicGF0aCI6Ii8xNjM4NDc1MC82MTE3MzAzNDctMTFjNzJmYTAtODFhYy00MGRjLTkzNTYtNzViYTBkNWVmZTIzLnBuZz9YLUFtei1BbGdvcml0aG09QVdTNC1ITUFDLVNIQTI1NiZYLUFtei1DcmVkZW50aWFsPUFLSUFWQ09EWUxTQTUzUFFLNFpBJTJGMjAyNjA2MjMlMkZ1cy1lYXN0LTElMkZzMyUyRmF3czRfcmVxdWVzdCZYLUFtei1EYXRlPTIwMjYwNjIzVDA5NTkzMVomWC1BbXotRXhwaXJlcz0zMDAmWC1BbXotU2lnbmF0dXJlPTllYjg3YTc0ZWNkZGFjMmIxZWUwYWYxN2EzNmY4NzRiNDc4ZWY0ZjE3Mjg3Njg5NjIzNGJlNTNlZTgyOTg3MmEmWC1BbXotU2lnbmVkSGVhZGVycz1ob3N0JnJlc3BvbnNlLWNvbnRlbnQtdHlwZT1pbWFnZSUyRnBuZyJ9.-syAwc8DFEZhIQg-bJqdxj0qoJwPNRIVcVJgbwCwivo" />
 
 # Meccha Chameleon Tools
 
@@ -39,9 +39,13 @@ python -m meccha_chameleon_tools
 
 Requirements: Windows 10/11, game running in windowed/borderless mode.
 
-> **Startup prompts** -- On first launch the tool asks:
+> **Startup prompts** -- On each launch the tool runs two prompts:
 > 1. Enable **Camouflage**? (optional, DEV -- disabled by default)
-> 2. Download the **latest release** from GitHub and install it to the game directory?
+> 2. **Auto-install** -- Only prompts on first launch if no release is found in the game directory:
+>    - **First time** -- Checks GitHub and asks "Install MecchaCamouflage?" with latest release info; Yes = download & install, No = skip to menu.
+>    - **Already installed** -- No dialog at all, opens menu directly.
+>
+> A .meccha_version file in the game directory tracks the installed version.
 
 ---
 
@@ -156,6 +160,14 @@ The FNameResolver auto-detects UE4, UE5, and custom header-layout variants. The 
 ---
 
 ## Changelog
+
+### v1.4.0 - Smarter auto-install (prompt only on first launch)
+
+- **Prompt only once** -- dialog only shows if no release is found in the game directory.
+- **Already installed** -- no dialog at all, no GitHub API call, opens menu directly.
+- **First install** -- checks GitHub and asks "Install MecchaCamouflage?" with version info.
+- **No skips to menu** -- clicking No opens menu immediately.
+- **Version tracking** -- .meccha_version file written to game directory after install.
 
 ### v1.3.0 - Camouflage optional (DEV) + auto-install prompt
 

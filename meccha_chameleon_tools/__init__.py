@@ -84,99 +84,115 @@ def _prompt_camouflage(config):
     return config
 
 
-def _fetch_and_install_release(target_dir):
-    """Download the latest MecchaCamouflage release from GitHub and install it."""
-    api_url = "https://api.github.com/repos/acentrist/MecchaCamouflage/releases/latest"
-    print("[CAMO] Fetching latest release info from GitHub...")
+def _read_local_version(target_dir):
+    marker = os.path.join(target_dir, '.meccha_version')
+    try:
+        if os.path.exists(marker):
+            with open(marker) as f:
+                return f.read().strip()
+    except Exception:
+        pass
+    return None
+
+
+def _write_local_version(target_dir, tag):
+    marker = os.path.join(target_dir, '.meccha_version')
+    try:
+        with open(marker, 'w') as f:
+            f.write(tag)
+    except Exception:
+        pass
+
+
+def _check_for_update(target_dir):
+    api_url = 'https://api.github.com/repos/acentrist/MecchaCamouflage/releases/latest'
+    print('[CAMO] Checking GitHub for latest release...')
     try:
         req = urllib.request.Request(api_url, headers={
-            "User-Agent": "MecchaCamouflage/1.0",
-            "Accept": "application/vnd.github.v3+json",
+            'User-Agent': 'MecchaCamouflage/1.0',
+            'Accept': 'application/vnd.github.v3+json',
         })
         with urllib.request.urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read().decode())
-
-        tag = data.get("tag_name", "latest")
-        assets = data.get("assets", [])
+        tag = data.get('tag_name', 'latest')
+        assets = data.get('assets', [])
         if not assets:
-            print(f"[CAMO] \u26a0 No downloadable assets found in release {tag}")
-            QMessageBox.information(
-                None, "No Assets",
-                f"Release {tag} has no downloadable assets (exe/zip)."
-            )
-            return
-
-        # Prefer .exe, fallback to .zip, then first available
+            print(f'[CAMO] No downloadable assets in release {tag}')
+            return None, None
         asset = None
         for a in assets:
-            if a["name"].lower().endswith(".exe"):
+            if a['name'].lower().endswith('.exe'):
                 asset = a
                 break
         if not asset:
             for a in assets:
-                if a["name"].lower().endswith(".zip"):
+                if a['name'].lower().endswith('.zip'):
                     asset = a
                     break
         if not asset:
             asset = assets[0]
+        local_ver = _read_local_version(target_dir)
+        if local_ver == tag:
+            exe_path = os.path.join(target_dir, asset['name'])
+            if os.path.exists(exe_path):
+                print(f'[CAMO] Already at latest version ({tag})')
+                return None, None
+        print(f'[CAMO] Latest remote: {tag} | Local: {local_ver or chr(110)+chr(111)+chr(110)+chr(101)}')
+        return tag, asset
+    except urllib.error.HTTPError as e:
+        print(f'[CAMO] HTTP error: {e.code}')
+        return None, None
+    except Exception as e:
+        print(f'[CAMO] Check failed: {e}')
+        return None, None
 
-        download_url = asset["browser_download_url"]
-        filename = asset["name"]
-        size_mb = asset.get("size", 0) / (1024 * 1024)
-        dest = os.path.join(target_dir, filename)
 
-        print(f"[CAMO] Downloading {filename} ({size_mb:.1f} MB) ...")
+def _fetch_and_install_release(target_dir, tag, asset):
+    download_url = asset['browser_download_url']
+    filename = asset['name']
+    size_mb = asset.get('size', 0) / (1024 * 1024)
+    dest = os.path.join(target_dir, filename)
+    print(f'[CAMO] Downloading {filename} ({size_mb:.1f} MB)...')
+    try:
         urllib.request.urlretrieve(download_url, dest)
-        print(f"[CAMO] \u2713 Saved to {dest}")
-
-        # Extract if a zip archive
-        if filename.lower().endswith(".zip"):
-            print(f"[CAMO] Extracting {filename} ...")
+        print(f'[CAMO] Saved to {dest}')
+        if filename.lower().endswith('.zip'):
+            print(f'[CAMO] Extracting {filename}...')
             with zipfile.ZipFile(dest) as zf:
                 zf.extractall(target_dir)
             os.remove(dest)
-            print(f"[CAMO] \u2713 Extracted to {target_dir}")
-
-        QMessageBox.information(
-            None, "Install Complete",
-            f"\u2713 Latest release {tag} downloaded and installed to:\n{target_dir}"
-        )
-
-    except urllib.error.HTTPError as e:
-        print(f"[CAMO] \u26a0 HTTP error: {e.code} {e.reason}")
-        QMessageBox.warning(
-            None, "Download Failed",
-            f"Could not fetch the latest release.\nHTTP {e.code}: {e.reason}"
-        )
+            print(f'[CAMO] Extracted to {target_dir}')
+        _write_local_version(target_dir, tag)
+        msg = QMessageBox()
+        msg.setWindowTitle('MECCHA CHAMELEON TOOLS')
+        msg.setText('Install Complete')
+        msg.setInformativeText(f'Release {tag} installed to:\n{target_dir}')
+        msg.exec_()
     except Exception as e:
-        print(f"[CAMO] \u26a0 Download failed: {e}")
-        QMessageBox.warning(
-            None, "Download Failed",
-            f"An error occurred while downloading the latest release:\n{e}"
-        )
+        print(f'[CAMO] Download failed: {e}')
+        QMessageBox.warning(None, 'Failed', f'Could not download: {e}')
 
 
 def _prompt_install_release():
-    """Ask the user whether to download & install the latest release to the game dir."""
     if not os.path.exists(GAME_DIR):
-        print(f"[CAMO] Game directory not found, skipping install prompt: {GAME_DIR}")
+        print(f'[CAMO] Game dir not found, skipping: {GAME_DIR}')
         return
-
+    release_exe = os.path.join(GAME_DIR, "MecchaCamouflage.exe")
+    if os.path.exists(release_exe):
+        print(f"[CAMO] Release already present at {release_exe}, skipping prompt")
+        return
+    tag, asset = _check_for_update(GAME_DIR)
+    if tag is None or asset is None:
+        return
     msg = QMessageBox()
-    msg.setWindowTitle("MECCHA CHAMELEON TOOLS")
-    msg.setText("Install Latest Release?")
-    msg.setInformativeText(
-        f"Do you want to download the latest MecchaCamouflage release from GitHub "
-        f"and install it to:\n\n{GAME_DIR}\n\n"
-        f"This will download the newest version of the tool directly into your game directory."
-    )
+    msg.setWindowTitle('MECCHA CHAMELEON TOOLS')
+    msg.setText('Install MecchaCamouflage?')
+    msg.setInformativeText(f'Latest release {tag} available.\n\nInstall to:\n{GAME_DIR}')
     msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
     msg.setDefaultButton(QMessageBox.Yes)
     msg.setIcon(QMessageBox.Question)
     if msg.exec_() == QMessageBox.Yes:
-        _fetch_and_install_release(GAME_DIR)
-
-
+        _fetch_and_install_release(GAME_DIR, tag, asset)
 def main():
     _set_dpi_aware()
     _deploy_mitigation()
