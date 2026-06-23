@@ -1,3 +1,5 @@
+[![Build EXE](https://github.com/SilentJMA/Meccha-Chameleon-Tools/actions/workflows/build.yml/badge.svg)](https://github.com/SilentJMA/Meccha-Chameleon-Tools/actions/workflows/build.yml)
+
 <img width="512" height="572" alt="Preview" src="https://private-user-images.githubusercontent.com/16384750/611730347-11c72fa0-81ac-40dc-9356-75ba0d5efe23.png?jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3ODIyMDkwNzEsIm5iZiI6MTc4MjIwODc3MSwicGF0aCI6Ii8xNjM4NDc1MC82MTE3MzAzNDctMTFjNzJmYTAtODFhYy00MGRjLTkzNTYtNzViYTBkNWVmZTIzLnBuZz9YLUFtei1BbGdvcml0aG09QVdTNC1ITUFDLVNIQTI1NiZYLUFtei1DcmVkZW50aWFsPUFLSUFWQ09EWUxTQTUzUFFLNFpBJTJGMjAyNjA2MjMlMkZ1cy1lYXN0LTElMkZzMyUyRmF3czRfcmVxdWVzdCZYLUFtei1EYXRlPTIwMjYwNjIzVDA5NTkzMVomWC1BbXotRXhwaXJlcz0zMDAmWC1BbXotU2lnbmF0dXJlPTllYjg3YTc0ZWNkZGFjMmIxZWUwYWYxN2EzNmY4NzRiNDc4ZWY0ZjE3Mjg3Njg5NjIzNGJlNTNlZTgyOTg3MmEmWC1BbXotU2lnbmVkSGVhZGVycz1ob3N0JnJlc3BvbnNlLWNvbnRlbnQtdHlwZT1pbWFnZSUyRnBuZyJ9.-syAwc8DFEZhIQg-bJqdxj0qoJwPNRIVcVJgbwCwivo" />
 
 # Meccha Chameleon Tools
@@ -153,7 +155,7 @@ The FNameResolver auto-detects UE4, UE5, and custom header-layout variants. The 
 | Game attach failed | Process name mismatch | Verify PenguinHotel-Win64-Shipping.exe is running |
 | ESP shows nothing | Not in a match with players | Load into a lobby or match |
 | Only 1-2 players detected (4+ in game) | Team filter on; all use same character class | Disable Team Filter in the ESP tab (or update to v1.2.1 where it defaults to off) |
-| Snap lines not visible | w2s dropped off-screen projections | Update to v1.2.1 — off-screen players now correctly draw lines to screen edge |
+| Snap lines not visible | w2s dropped off-screen projections | Update to v1.2.1 â€” off-screen players now correctly draw lines to screen edge |
 | Aimbot not firing | Key binding mismatch | Re-record the aim key in the AIMBOT tab |
 | Radar not showing | Radar disabled | Enable Radar Enabled in the RADAR tab |
 
@@ -161,8 +163,9 @@ The FNameResolver auto-detects UE4, UE5, and custom header-layout variants. The 
 
 ## Changelog
 
-### v1.4.0 - Smarter auto-install (prompt only on first launch)
+### v1.4.0 - Smarter auto-install (prompt only on first launch) + CI auto-build
 
+- **CI/CD** -- GitHub Actions auto-builds the EXE on every push to master and attaches it to published releases.
 - **Prompt only once** -- dialog only shows if no release is found in the game directory.
 - **Already installed** -- no dialog at all, no GitHub API call, opens menu directly.
 - **First install** -- checks GitHub and asks "Install MecchaCamouflage?" with version info.
