@@ -48,7 +48,7 @@ Requirements: Windows 10/11, game running in windowed/borderless mode.
 | Key | Action |
 |-----|--------|
 | Insert / F1 | Toggle settings menu |
-| F9 | Photo paint (camouflage) |
+| F10 | Photo paint (camouflage) |
 | Close button | Bottom bar of menu -- quits the application entirely |
 
 ### Settings Tabs
@@ -123,8 +123,6 @@ The FNameResolver auto-detects UE4, UE5, and custom header-layout variants. The 
 
 - **Removed all startup dialogs** -- no game directory prompt, no GitHub download check, no camouflage opt-in dialog. Tool launches silently.
 - **Aimbot consistency fix** -- `_aim_at()` now uses the same camera data as `_find_best_target()` instead of re-fetching, eliminating aim drift.
-- **Cleanup** -- removed all debug/test scripts, dnSpy decompiler, reverse-engineered DLLs from the project folder.
-- **Updated .gitignore** -- comprehensive ignore patterns for all debug scripts.
 
 ### v1.4.1 - CI auto-build + Close button + __main__ fix
 
