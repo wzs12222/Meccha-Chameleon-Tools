@@ -18,10 +18,9 @@ External ESP - Aimbot - Radar for MECCA CHAMELEON (UE5)
 | **Health Bars** | Health bar and shield bar, adjustable model height and Y offset |
 | **Radar** | External minimap radar with configurable size and range |
 | **Aimbot** | Smooth aim assist, FOV circle, rebindable key |
-| **Camouflage** | External paint tool toggle, color picker, sample grid size, blend opacity |
-| **Colors** | Enemy, local, skeleton color pickers |
+| **Camouflage** | Bundled paint EXE, auto F10 trigger, fast paint tuning |
 
-All features are fully external - no DLL injection, no UE4SS, no DXGI.
+All ESP features are fully external (memory read). Camouflage uses a bundled bridge EXE that is auto-launched and auto-triggered.
 
 ---
 
@@ -49,12 +48,12 @@ Requirements: Windows 10/11, game running in windowed/borderless mode.
 | Key | Action |
 |-----|--------|
 | Insert / F1 | Toggle settings menu |
-| F9 | Camouflage paint (when enabled in CAMO tab) |
+| F10 | Camouflage paint (when enabled in Camouflage tab) |
 | Close button | Bottom bar of menu -- quits the application entirely |
 
 ### Settings Tabs
 
-The menu organises options across six tabs selected from a sidebar:
+The menu organises options across five tabs selected from a sidebar:
 
 **ESP** - Enable/disable, style toggles (Dot / 2D Box / Skeleton), Show Local Player, Names, Distance, Snap Lines, Team Filter, Distance Scaling, dot radius.
 
@@ -62,11 +61,9 @@ The menu organises options across six tabs selected from a sidebar:
 
 **RADAR** - Enable/disable, radar size (80-400 px), radar range (1000-50000).
 
-**AIMBOT** - Enable toggle, FOV circle display, key binding recorder, FOV radius, smoothing factor, aim offset.
+**AIMBOT** - Enable toggle, FOV circle display (only shown when targets exist), key binding recorder, FOV radius, smoothing factor, aim offset.
 
-**CAMO** - Enable/disable camouflage painting, color picker, sample grid size (N×N pixels centered on crosshair), blend opacity slider.
-
-**COLORS** - Pick colours for enemy, local player, and skeleton overlay via colour picker dialog.
+**Camouflage** - Enable/disable camouflage painting. Press F10 in-game to apply. The tool auto-launches the bundled bridge EXE and triggers F10 for you.
 
 ---
 
@@ -89,7 +86,7 @@ UObjectArray -> find_class, iter_objects
 OffsetResolver -> dynamic property walking
 GameReader -> world, camera, players
 Overlay -> QPainter rendering loop @ 60 fps
-Menu -> PyQt5 settings window (6-tab sidebar: ESP, HEALTH, RADAR, AIMBOT, CAMO, COLORS)
+Menu -> PyQt5 settings window (5-tab sidebar: ESP, HEALTH, RADAR, AIMBOT, Camouflage)
 ```
 
 ### Memory Access
@@ -121,6 +118,22 @@ The FNameResolver auto-detects UE4, UE5, and custom header-layout variants. The 
 ---
 
 ## Changelog
+
+### v1.7.0 - Reworked camouflage + UI cleanup
+
+- **Reworked camouflage EXE** bundled directly into the release (no separate download).
+- **Removed COLORS tab** from the menu.
+- **Renamed CAMO tab** to **Camouflage**.
+- **F10 hotkey** for camouflage (replaces F9).
+- **Auto F10 trigger** — the tool automatically sends F10 to start the bridge, no manual keypress needed.
+- **Speed-tuned paint** — 256 paints/tick, brush_radius 4.0, 5000 min points, auto-flush enabled.
+- **Stable extraction path** — EXE and DLL extract to `%APPDATA%\MecchaCamouflage\` on first run.
+- **Aimbot FOV circle** now only draws when valid targets exist on screen.
+
+### v1.6.0 - Bundled camouflage EXE with auto F10
+
+- First release to bundle `meccha-camouflage.exe` and bridge DLL into the PyInstaller build.
+- Stable `%APPDATA%` extraction path, auto F10 trigger, fast paint tuning, cleanup on exit.
 
 ### v1.5.3 - CAMO tab, UI improvements
 
