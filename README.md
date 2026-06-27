@@ -86,7 +86,7 @@ meccha_chameleon_tools/   # Python package
 
 ## Camouflage Standalone Files
 
-The camouflage feature is built from three standalone files. These are bundled into the main `MecchaCamouflage.exe` release (auto-extracted to `%APPDATA%\MecchaCamouflage\`), but are also published individually for manual use or integration with other loaders.
+The camouflage feature is built from three standalone files. These are bundled into the main `MecchaCamouflage.exe` release (auto-extracted to `%APPDATA%\MecchaCamouflage\`), but are also published as a single **`camouflage-standalone.zip`** for manual use or integration with other loaders.
 
 | File | Description |
 |------|-------------|
@@ -96,12 +96,13 @@ The camouflage feature is built from three standalone files. These are bundled i
 
 ### Manual Usage
 
-1. Launch MECCA CHAMELEON.
-2. Run `meccha-xenos-injector.exe` (injects `meccha-xenos-bridge.dll`).
-3. Run `meccha-camouflage.exe` (starts the bridge).
-4. Press **F10** in-game to start painting / **F9** to cancel.
+1. Download and extract `camouflage-standalone.zip`.
+2. Launch MECCA CHAMELEON.
+3. Run `meccha-xenos-injector.exe` (injects `meccha-xenos-bridge.dll`).
+4. Run `meccha-camouflage.exe` (starts the bridge).
+5. Press **F10** in-game to start painting / **F9** to cancel.
 
-All three files are attached to every `v1.7.x` release as standalone assets under the **Camouflage Files** section.
+The ZIP is attached to every `v1.7.x` release as a standalone asset.
 
 ## Architecture
 

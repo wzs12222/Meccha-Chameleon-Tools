@@ -658,10 +658,11 @@ class Overlay(QWidget):
         self._f9_feedback = ""
         self._f9_feedback_count = 0
         # Debounce counters for phantom GetAsyncKeyState reads
+        # Time-based cooldown prevents phantom-read loops
         self._f10_down_count = 0
-        self._f10_up_count = 0
+        self._f10_last_fire_ms = 0
         self._f9_down_count = 0
-        self._f9_up_count = 0
+        self._f9_last_fire_ms = 0
         self._camo_thread = None
         self._camo_stop_event = threading.Event()
         self.camo_done.connect(self._on_camo_done)
@@ -712,39 +713,29 @@ class Overlay(QWidget):
                         w.setVisible(not w.isVisible())
                         break
             self._key_states[name] = bool(state)
-        # F10: Camouflage paint start (debounced against phantom GetAsyncKeyState reads)
+        # F10: Camouflage paint start (time-based cooldown prevents phantom GetAsyncKeyState loops)
         VK_F10 = 0x79
         f10_raw = bool(ctypes.windll.user32.GetAsyncKeyState(VK_F10) & 0x8000)
         if f10_raw:
             self._f10_down_count += 1
-            self._f10_up_count = 0
         else:
-            self._f10_up_count += 1
             self._f10_down_count = 0
-        # fire only when key is held for >=2 consecutive polls AND was released for >=2 polls
-        f10_armed = self._f10_up_count >= 2
-        if self._f10_down_count >= 2 and f10_armed and not self._key_states.get("f10"):
+        now_ms = int(time.time() * 1000)
+        if self._f10_down_count >= 2 and (now_ms - self._f10_last_fire_ms) > 3000:
             self._trigger_photo_paint()
-            self._key_states["f10"] = True
-            self._f10_up_count = 0
-        if self._f10_down_count == 0:
-            self._key_states["f10"] = False
-        # F9: Camouflage paint stop (cancel) - debounced
+            self._f10_last_fire_ms = now_ms
+            self._f10_down_count = 0
+        # F9: Camouflage paint stop (cancel) - time-based cooldown
         VK_F9 = 0x78
         f9_raw = bool(ctypes.windll.user32.GetAsyncKeyState(VK_F9) & 0x8000)
         if f9_raw:
             self._f9_down_count += 1
-            self._f9_up_count = 0
         else:
-            self._f9_up_count += 1
             self._f9_down_count = 0
-        f9_armed = self._f9_up_count >= 2
-        if self._f9_down_count >= 2 and f9_armed and not self._key_states.get("f9_camo"):
+        if self._f9_down_count >= 2 and (now_ms - self._f9_last_fire_ms) > 1000:
             self._trigger_camo_stop()
-            self._key_states["f9_camo"] = True
-            self._f9_up_count = 0
-        if self._f9_down_count == 0:
-            self._key_states["f9_camo"] = False
+            self._f9_last_fire_ms = now_ms
+            self._f9_down_count = 0
         # Decrement F10 feedback counter every poll tick
         if self._f9_feedback_count > 0:
             self._f9_feedback_count -= 1
