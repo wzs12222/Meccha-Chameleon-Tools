@@ -284,7 +284,7 @@ class CamoWindow(tk.Tk):
 
         # Watermark
         wm = tk.Label(frame, text="Meccha Chameleon Tools",
-                      bg=BG, fg="#ffffff22", font=("Segoe UI", 7))
+                      bg=BG, fg="#333333", font=("Segoe UI", 7))
         wm.pack(side="bottom", anchor="se", padx=4, pady=2)
 
     def _bind_drag(self):
