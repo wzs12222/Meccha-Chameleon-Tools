@@ -282,6 +282,11 @@ class CamoWindow(tk.Tk):
                               command=self._close)
         close_btn.place(relx=1.0, x=-4, y=4, anchor="ne")
 
+        # Watermark
+        wm = tk.Label(frame, text="Meccha Chameleon Tools",
+                      bg=BG, fg="#ffffff22", font=("Segoe UI", 7))
+        wm.pack(side="bottom", anchor="se", padx=4, pady=2)
+
     def _bind_drag(self):
         self._drag_data = {"x": 0, "y": 0}
         def start(ev):

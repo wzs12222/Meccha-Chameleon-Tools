@@ -437,11 +437,14 @@ class Menu(QWidget):
 
         hint = QLabel("Ins/F1 toggle | Drag to move | END=Exit")
         hint.setStyleSheet("color: #555; font-size: 9px;")
+        wm = QLabel("Meccha Chameleon Tools")
+        wm.setStyleSheet("color: #ffffff18; font-size: 7px;")
         bar.addWidget(self.btn_save)
         bar.addWidget(self.btn_load)
         bar.addWidget(self.btn_close)
         bar.addStretch()
         bar.addWidget(hint)
+        bar.addWidget(wm)
         outer.addLayout(bar)
 
         outer2 = QVBoxLayout(self)
@@ -967,6 +970,13 @@ class Overlay(QWidget):
                     )
                 if self._aim_key_held():
                     self._aim_at(best_target[0], best_target[1])
+
+        # Watermark
+        painter.setPen(QPen(QColor(255, 255, 255, 40)))
+        wm_font = QFont("Segoe UI", 8)
+        painter.setFont(wm_font)
+        painter.drawText(w - 160, h - 10, "Meccha Chameleon Tools")
+        painter.setFont(font)
 
         if self.config.radar_enabled and local_pos:
             radar_x = w - self.config.radar_size - 20
