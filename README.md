@@ -1,6 +1,6 @@
 <div align="center">
   
-<img src="preview.png" alt="Meccha Chameleon Tools" width="100%"/>
+<img width="1582" height="1092" alt="image" src="https://github.com/user-attachments/assets/e0dbeffe-b591-4bf5-9fc0-0f047a545c3d" />
 
 # Meccha Chameleon Tools
 
