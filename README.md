@@ -60,7 +60,7 @@ Requirements: Windows 10/11, game running in windowed/borderless mode.
 
 The menu organises options across five tabs selected from a sidebar:
 
-**ESP** - Enable/disable, style toggles (Dot / 2D Box / Skeleton), Show Local Player, Names, Distance, Snap Lines, Team Filter, Distance Scaling, dot radius.
+**ESP** - Enable/disable, style toggles (Dot / 2D Box / Corner Box / Skeleton), Show Local Player, Names, Show Roles (Hunter/Survivor), Distance, Snap Lines, Team Filter, Enemy Only, Distance Scaling, dot radius, visible/not-visible coloring.
 
 **HEALTH** - Health bar toggle, shield bar toggle, model height, Y offset.
 
