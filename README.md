@@ -4,7 +4,7 @@
 
 # Meccha Chameleon Tools
 
-External ESP - Aimbot - Radar for MECCA CHAMELEON (UE5) 
+External ESP - Aimbot - Radar for MECCA CHAMELEON (UE5)
 
 <img width="1213" height="793" alt="Image" src="https://github.com/user-attachments/assets/512aafbb-8199-42e5-9313-f28249306a02" />
 
@@ -88,6 +88,10 @@ meccha_chameleon_tools/   # Python package
 
 ## Camouflage Standalone Files
 
+> **Attribution**: The camouflage bridge runtime (`runtime/`) originates from the
+> [acentrist/MecchaCamouflage](https://github.com/acentrist/MecchaCamouflage) project
+> — the standalone auto-paint tool for MECCA CHAMELEON. Licensed under GPL-3.0.
+
 The camouflage feature is built from two distributions. The **standalone** `MecchaCamouflage.exe` (12 MB, no PyQt5) provides a minimal one-click paint experience. The **full** `Meccha Chameleon Tools.exe` (40 MB) bundles all features including the menu overlay.
 
 ### Standalone `MecchaCamouflage.exe`
@@ -145,7 +149,7 @@ OffsetResolver -> dynamic property walking
 GameReader -> world, camera, players, role detection
 Overlay -> QPainter rendering loop @ 60 fps
 Menu -> PyQt5 settings window (tabs: ESP, HEALTH, RADAR, AIMBOT, Camouflage)
-Bridge C++ DLL -> TCP command server for paint, rotate, teleport, kill, set_fov
+Bridge C++ DLL -> TCP command server for paint, rotate, teleport, kill, set_fov (derived from [acentrist/MecchaCamouflage](https://github.com/acentrist/MecchaCamouflage))
 Standalone camo -> tkinter GUI (MecchaCamouflage.exe), multi-angle paint via bridge
 ```
 
@@ -265,3 +269,9 @@ The FNameResolver auto-detects UE4, UE5, and custom header-layout variants. The 
 ## Disclaimer
 
 Educational and research purposes only. Use at your own risk.
+
+## License & Attribution
+
+This project incorporates code from [acentrist/MecchaCamouflage](https://github.com/acentrist/MecchaCamouflage)
+(GPL-3.0). The full license text is included in this repository as `LICENSE.txt`.
+The official MecchaCamouflage project is at [https://github.com/acentrist/MecchaCamouflage](https://github.com/acentrist/MecchaCamouflage).
