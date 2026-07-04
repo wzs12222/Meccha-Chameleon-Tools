@@ -19,6 +19,7 @@ from meccha_chameleon_tools.core import (
     PatternScanner, FNameResolver, UObjectArray, OffsetResolver,
 )
 from meccha_chameleon_tools.config import Config, load_config, save_config, CONFIG_FILE
+from meccha_chameleon_tools.i18n import set_language
 from meccha_chameleon_tools.ui import Menu, Overlay
 
 
@@ -79,6 +80,7 @@ def main():
     app = QApplication(sys.argv)
 
     config = load_config()
+    set_language(config.language)
 
     game_dir = config.game_directory
     _deploy_mitigation(game_dir)
@@ -98,10 +100,10 @@ def main():
     overlay.show()
     menu.show()
 
-    # Auto-save config + cleanup on exit
-    app.aboutToQuit.connect(lambda: (save_config(config), esp.cleanup()))
-
-    sys.exit(app.exec_())
+    ret = app.exec_()
+    save_config(config)
+    esp.cleanup()
+    sys.exit(ret)
 
 
 if __name__ == "__main__":

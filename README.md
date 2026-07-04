@@ -1,14 +1,15 @@
 <div align="center">
-  
-<img width="1582" height="1092" alt="image" src="https://github.com/user-attachments/assets/e0dbeffe-b591-4bf5-9fc0-0f047a545c3d" />
 
 # Meccha Chameleon Tools
 
-External ESP - Aimbot - Radar for MECCA CHAMELEON (UE5)
+External ESP - Aimbot - Radar for MECCA CHAMELEON (UE5) | [Discord](https://discord.gg/ckgtuZPxd)
 
-<img width="1213" height="793" alt="Image" src="https://github.com/user-attachments/assets/512aafbb-8199-42e5-9313-f28249306a02" />
+<img src="screenshot_en.png" width="100%"/>
+<img src="screenshot_zh.png" width="100%"/>
 
-https://github.com/user-attachments/assets/d3f86ee2-cb53-4a96-8599-47a20beb5788
+[Demo1](demo1.mp4)
+[Demo2](demo2.mp4)
+
 </div>
 
 ---
@@ -17,23 +18,42 @@ https://github.com/user-attachments/assets/d3f86ee2-cb53-4a96-8599-47a20beb5788
 
 | Category | Capabilities |
 |----------|-------------|
-| **ESP** | Dot / 2D Box / **Corner Box** / Skeleton overlay, names, **role labels (Hunter/Survivor)**, distance, snap lines, **enemy-only filter**, **visible/not-visible coloring**, team filter, distance scaling |
+| **ESP** | Dot / 2D Box / **Corner Box** / Skeleton overlay, names, **role labels (Hunter/Survivor)**, distance, snap lines, **enemy-only filter**, **visible/not-visible coloring**, team filter, distance scaling, **alternating-color snap lines (theme + purple)**, **faction-aware colors (green/yellow/red)**, **show teammates toggle** |
 | **Health Bars** | Health bar and shield bar, adjustable model height and Y offset |
-| **Radar** | External minimap radar with configurable size and range |
+| **Radar** | External minimap radar with configurable size and range, **faction-colored dots** |
 | **Aimbot** | Smooth aim assist, FOV circle, rebindable key |
 | **Camouflage** | Bundled paint EXE, F10 start / F9 stop / **auto multi-angle (front+back)**, **180° rotate**, debounce-protected triggers, fast paint tuning |
+| **Internationalization** | **English and Chinese UI** with language selector in menu bar |
 
 All ESP features are fully external (memory read). Camouflage uses a bundled bridge EXE that is auto-launched and auto-triggered.
+
+### ESP Color Reference
+
+| Player Type | Dot / Box | Snap Line | Notes |
+|------------|-----------|-----------|-------|
+| Self (local player) | Green | Green alternating with purple | Always visible if Show Local is on |
+| Enemy (opposing faction) | Red | Red alternating with purple | Turns purple in Enemy Only mode when occluded |
+| Teammate (same faction) | Yellow | Yellow alternating with purple | Configurable via teammate_color |
+| Unknown / Observer | Blue with black outline | Blue alternating with purple | No faction label shown -- role and distance only |
+
+Snap lines always use an alternating pattern: 8px of the player's theme color, then 8px of purple. This is the default and only snap line style.
 
 ---
 
 ## Quick Start
 
-### Option 1 - Standalone (no Python required)
+### Option 1 - Pre-built EXE (no Python required)
 
-1. Download the latest release EXE
-2. Launch MECCA CHAMELEON (windowed / borderless)
-3. Run the EXE
+The built executable is located at:
+
+```
+dist/MecchaChameleonTools/MecchaChameleonTools.exe
+```
+
+The `_internal/` directory next to it contains the Python runtime and PyQt5 dependencies. This is the result of PyInstaller's `--onedir` mode. A single-file (`--onefile`) build was attempted but PyQt5's platform plugin (`qwindows.dll`) cannot be reliably located when the executable extracts to a temporary directory. The `--onedir` layout avoids this problem entirely.
+
+1. Launch MECCA CHAMELEON (windowed / borderless)
+2. Run `MecchaChameleonTools.exe`
 
 ### Option 2 - From source
 
@@ -55,12 +75,13 @@ Requirements: Windows 10/11, game running in windowed/borderless mode.
 | F9 | Camouflage paint **stop / cancel** (cancels active paint via bridge) |
 | END | Quit the application entirely |
 | Close button | Bottom bar of menu -- quits the application entirely |
+| Language selector | Dropdown in bottom bar -- switch between English and Chinese (restart required) |
 
 ### Settings Tabs
 
 The menu organises options across five tabs selected from a sidebar:
 
-**ESP** - Enable/disable, style toggles (Dot / 2D Box / Corner Box / Skeleton), Show Local Player, Names, Show Roles (Hunter/Survivor), Distance, Snap Lines, Team Filter, Enemy Only, Distance Scaling, dot radius, visible/not-visible coloring.
+**ESP** - Enable/disable, style toggles (Dot / 2D Box / Corner Box / Skeleton), Show Local Player, Names, Show Roles (Hunter/Survivor), Distance, Snap Lines, Team Filter, Enemy Only, Show Teammates, Distance Scaling, dot radius, visible/not-visible coloring, Refresh FPS (10-120).
 
 **HEALTH** - Health bar toggle, shield bar toggle, model height, Y offset.
 
@@ -78,6 +99,7 @@ The menu organises options across five tabs selected from a sidebar:
 meccha_chameleon_tools/   # Python package
 |-- __init__.py           # Main application entry point
 |-- __main__.py           # Module runner
+|-- i18n.py               # Internationalization (English / Chinese)
 |-- camo_entry.py         # Standalone camouflage CLI entry point
 |-- config.py             # Configuration + JSON save/load
 |-- core.py               # Memory reading, ESP logic, role detection, bridge commands
@@ -87,10 +109,6 @@ meccha_chameleon_tools/   # Python package
 ---
 
 ## Camouflage Standalone Files
-
-> **Attribution**: The camouflage bridge runtime (`runtime/`) originates from the
-> [acentrist/MecchaCamouflage](https://github.com/acentrist/MecchaCamouflage) project
-> — the standalone auto-paint tool for MECCA CHAMELEON. Licensed under GPL-3.0.
 
 The camouflage feature is built from two distributions. The **standalone** `MecchaCamouflage.exe` (12 MB, no PyQt5) provides a minimal one-click paint experience. The **full** `Meccha Chameleon Tools.exe` (40 MB) bundles all features including the menu overlay.
 
@@ -147,9 +165,10 @@ PatternScanner -> GUObjectArray, FNamePool
 UObjectArray -> find_class, iter_objects
 OffsetResolver -> dynamic property walking
 GameReader -> world, camera, players, role detection
-Overlay -> QPainter rendering loop @ 60 fps
+BackgroundReader -> spawned thread, 10 reads/sec, caches data for renderer
+Overlay -> QPainter rendering loop @ configurable FPS (default 30)
 Menu -> PyQt5 settings window (tabs: ESP, HEALTH, RADAR, AIMBOT, Camouflage)
-Bridge C++ DLL -> TCP command server for paint, rotate, teleport, kill, set_fov (derived from [acentrist/MecchaCamouflage](https://github.com/acentrist/MecchaCamouflage))
+Bridge C++ DLL -> TCP command server for paint, rotate, teleport, kill, set_fov
 Standalone camo -> tkinter GUI (MecchaCamouflage.exe), multi-angle paint via bridge
 ```
 
@@ -158,9 +177,10 @@ Standalone camo -> tkinter GUI (MecchaCamouflage.exe), multi-angle paint via bri
 1. **Pattern scanning** locates GUObjectArray and FNamePool in the game module via signature matching with fallback chains.
 2. **Object walking** enumerates all UObjects to resolve engine class addresses and find player pawns, controllers, and camera managers.
 3. **Dynamic offset resolution** walks the UStruct::ChildProperties -> FField::Next chain to find property offsets at runtime - no hardcoded offsets.
-4. **ESP** reads player positions from GameState -> PlayerArray -> PlayerState -> PawnPrivate -> RootComponent -> RelativeLocation, projects through the camera view matrix.
-5. **Radar** projects player positions relative to local player orientation onto a 2D minimap display.
+4. **ESP** reads player positions from GameState -> PlayerArray -> PlayerState -> PawnPrivate -> RootComponent -> RelativeLocation, projects through the camera view matrix. Faction detection reads the pawn's class name via FName resolution and checks for "Hunter" or "Survivor" substrings.
+5. **Radar** projects player positions relative to local player orientation onto a 2D minimap display. Dot colors follow the same faction rules as the ESP overlay.
 6. **Aimbot** reads/writes ControlRotation on the local player controller with configurable smoothing.
+7. **Snap lines** use an alternating color pattern (theme + purple, 8px segments) by default. This distinguishes them from solid lines used by other tools.
 
 ### Engine Compatibility
 
@@ -175,7 +195,8 @@ The FNameResolver auto-detects UE4, UE5, and custom header-layout variants. The 
 | Game attach failed | Process name mismatch | Verify PenguinHotel-Win64-Shipping.exe is running |
 | ESP shows nothing | Not in a match with players | Load into a lobby or match |
 | Only 1-2 players detected (4+ in game) | Team filter on; all use same character class | Disable Team Filter in the ESP tab |
-| Snap lines not visible | w2s dropped off-screen projections | Update â€” off-screen players now correctly draw lines to screen edge |
+| Snap lines not visible | w2s dropped off-screen projections | Off-screen players now correctly draw lines to screen edge |
+| Snap lines appear as alternating purple/color dashes | This is the default snap line style | Each snap line alternates between the player's theme color and purple (8px segments) to distinguish them from solid lines |
 | Aimbot not firing | Key binding mismatch | Re-record the aim key in the AIMBOT tab |
 | Radar not showing | Radar disabled | Enable Radar Enabled in the RADAR tab |
 | Paint only covers front | Camera rotation failed | Multi-angle paints front+back; ensure game window is visible for hook injection |
@@ -183,6 +204,23 @@ The FNameResolver auto-detects UE4, UE5, and custom header-layout variants. The 
 ---
 
 ## Changelog
+
+### v1.9.0 - Internationalization, faction-based ESP colors, performance improvements
+
+- **Internationalization** -- English and Chinese UI with language selector in the menu bar. Language preference is saved to config.
+- **Faction-based ESP colors** -- Self is green, same-faction teammates are yellow (configurable via `teammate_color`), enemies are red. Labels match accordingly ("Teammate {idx}" vs "Enemy {idx}").
+- **Show Teammates toggle** -- new checkbox in the ESP tab to control whether same-faction players are displayed, independent of Enemy Only mode.
+- **Alternating snap lines** -- every snap line now alternates between the player's theme color and purple in 8px segments, replacing the previous solid line style.
+- **Background memory reader** -- game data (camera, players, health) is read in a separate thread at ~10 reads/sec. The render loop uses a thread-safe cache, eliminating stutter when memory reads take longer than the frame interval.
+- **Configurable overlay FPS** -- new slider in the ESP tab (10-120, default 30) controls the timer interval.
+- **Observer mode support** -- when the local player is dead or spectating, the tool locates the spectated player by camera proximity and uses their faction as reference.
+- **Config persistence fix** -- config file path changed to `%APPDATA%\MecchaCamouflage\esp_config.json` so settings survive PyInstaller builds.
+- **Fixed: all players shown as red** -- color logic now respects the `is_enemy` flag computed by `iter_players()`.
+- **Fixed: "Enemy" label on teammates** -- labels distinguish between enemies, teammates, and self.
+- **Fixed: radar all-red dots** -- radar dots now use faction-based colors.
+- **Fixed: btn_close double declaration** -- duplicate button instance removed.
+- **Fixed: title typo** -- "CHAMELION" corrected to "CHAMELEON".
+- **Fixed: Load Config UI sync** -- checkboxes and spinboxes now refresh after loading a saved config.
 
 ### v1.8.0 - Role detection, enemy filter, corner box, teleport/kill/FOV commands, standalone EXE
 
@@ -269,9 +307,3 @@ The FNameResolver auto-detects UE4, UE5, and custom header-layout variants. The 
 ## Disclaimer
 
 Educational and research purposes only. Use at your own risk.
-
-## License & Attribution
-
-This project incorporates code from [acentrist/MecchaCamouflage](https://github.com/acentrist/MecchaCamouflage)
-(GPL-3.0). The full license text is included in this repository as `LICENSE.txt`.
-The official MecchaCamouflage project is at [https://github.com/acentrist/MecchaCamouflage](https://github.com/acentrist/MecchaCamouflage).

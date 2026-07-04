@@ -440,6 +440,7 @@ class MecchaESP:
         "AActor::RootComponent": ("Actor", "RootComponent"),
         "USceneComponent::RelativeLocation": ("SceneComponent", "RelativeLocation"),
     }
+
     # Dynaimc property names to try for health
     HEALTH_PROP_NAMES = ("Health", "CurrentHealth", "HP", "HealthPoints", "HitPoints")
     SHIELD_PROP_NAMES = ("Shield", "Armor", "ShieldHealth", "ExtraHealth", "ArmorHealth")
@@ -608,39 +609,65 @@ class MecchaESP:
         return origin, extent, radius
 
     def _detect_role(self, pawn):
-        """Return ('Hunter', True, False) or ('Survivor', False, True) or ('Unknown', False, False)."""
+        """Return (role_label, is_hunter, is_survivor, class_name).
+        'Hunter'/'Survivor' detection via class name substring, 
+        falls back to class prefix comparison."""
+        if not pawn:
+            return "Unknown", False, False, ""
         try:
             name = self.objects.class_name(pawn)
-            if "Hunter" in name:
-                return "Hunter", True, False
-            if "Survivor" in name:
-                return "Survivor", False, True
+            if name:
+                if "Hunter" in name:
+                    return "Hunter", True, False, name
+                if "Survivor" in name:
+                    return "Survivor", False, True, name
+                # Return raw class name for fallback comparison
+                return "Unknown", False, False, name
         except Exception:
             pass
-        return "Unknown", False, False
+        return "Unknown", False, False, ""
 
     def _is_visible(self, actor):
-        """Approximate visibility check: read body/sphere visibility flag if available."""
-        try:
-            try:
-                root = rp(self.pm, actor + self.offsets["AActor::RootComponent"])
-                if root:
-                    vis = ru32(self.pm, root + 0x258)
-                    if vis == 0:
-                        return False
-            except Exception:
-                pass
-            try:
-                vis = ru32(self.pm, actor + self.offsets.get("AActor::bHidden", 0x178))
-                if vis == 1:
-                    return False
-            except Exception:
-                pass
-        except Exception:
-            pass
+        # DISABLED: behind-wall detection is unreliable across UE5 versions.
+        # The visibility flags (0x258/0x260/0x250) vary by game build.
+        # Always return True to keep snap lines and colors consistent.
         return True
+        # Original attempt kept for reference:
+        # if not actor:
+        #     return True
+        # try:
+        #     root = rp(self.pm, actor + self.offsets["AActor::RootComponent"])
+        #     if root:
+        #         for off in (0x258, 0x260, 0x250):
+        #             try:
+        #                 v = ru32(self.pm, root + off)
+        #                 if v == 0:
+        #                     return False
+        #                 if v == 1:
+        #                     return True
+        #             except Exception:
+        #                 continue
+        # except Exception:
+        #     pass
+        # return True
 
     # ------
+    def _find_spectate_target(self, cam_pos, players_list):
+        """When local pawn is gone (dead/observer), find which player the camera is on.
+        Uses 2D horizontal distance in case camera is above the player."""
+        if not cam_pos or (cam_pos[0] == 0 and cam_pos[1] == 0 and cam_pos[2] == 0):
+            return None
+        best_idx = None
+        best_dist = 800.0  # generous threshold for observer height offset
+        for i, (pawn, ps, pos) in enumerate(players_list):
+            if not pos:
+                continue
+            d = dist_2d(cam_pos, pos)
+            if d < best_dist:
+                best_dist = d
+                best_idx = i
+        return best_idx
+
     def iter_players(self, include_local=True, team_filter=False, enemy_only=False):
         world = self._get_world()
         if not world:
@@ -655,9 +682,10 @@ class MecchaESP:
         local_pawn = 0
         if local_pc:
             local_pawn = rp(self.pm, local_pc + self.offsets["APlayerController::AcknowledgedPawn"])
-        local_role, local_is_hunter, local_is_survivor = "Unknown", False, False
-        if local_pawn:
-            local_role, local_is_hunter, local_is_survivor = self._detect_role(local_pawn)
+        local_cam = self.get_camera()
+        cam_pos = local_cam["loc"] if local_cam else None
+        # Build raw player list with positions for spectate detection
+        raw_players = []  # (pawn, ps, pos)
         seen = set()
         for i in range(pa_count):
             ps = rp(self.pm, pa_data + i * 8)
@@ -667,29 +695,70 @@ class MecchaESP:
             pawn = rp(self.pm, ps + self.offsets["APlayerState::PawnPrivate"])
             if not pawn:
                 continue
-            if not include_local and pawn == local_pawn:
-                continue
             pos = self.get_actor_root_pos(pawn)
             if pos is None:
                 continue
-            role, is_hunter, is_survivor = self._detect_role(pawn)
+            raw_players.append((pawn, ps, pos))
+        # Determine reference faction
+        ref_pawn = local_pawn
+        ref_is_hunter, ref_is_survivor = False, False
+        ref_prefix = ""
+        is_spectating = False
+        if local_pawn:
+            _, ref_is_hunter, ref_is_survivor, ref_cls = self._detect_role(local_pawn)
+            if ref_cls:
+                parts = ref_cls.split("_")
+                if len(parts) >= 2:
+                    ref_prefix = parts[0] + "_" + parts[1]
+        elif cam_pos and raw_players:
+            # Observer mode: find who the camera is on
+            spec_idx = self._find_spectate_target(cam_pos, raw_players)
+            if spec_idx is not None:
+                spec_pawn = raw_players[spec_idx][0]
+                ref_pawn = spec_pawn
+                _, ref_is_hunter, ref_is_survivor, ref_cls = self._detect_role(spec_pawn)
+                if ref_cls:
+                    parts = ref_cls.split("_")
+                    if len(parts) >= 2:
+                        ref_prefix = parts[0] + "_" + parts[1]
+                is_spectating = True
+        # Emit player data
+        for player_idx, (pawn, ps, pos) in enumerate(raw_players):
+            if not include_local and pawn == local_pawn:
+                continue
+            role, is_hunter, is_survivor, cls_name = self._detect_role(pawn)
+            # Determine enemy/teammate
             is_enemy = False
-            if local_is_hunter and is_survivor:
-                is_enemy = True
-            elif local_is_survivor and is_hunter:
+            if is_hunter or is_survivor:
+                if ref_is_hunter and is_survivor:
+                    is_enemy = True
+                elif ref_is_survivor and is_hunter:
+                    is_enemy = True
+            elif ref_prefix and cls_name:
+                parts = cls_name.split("_")
+                target_prefix = parts[0] + "_" + parts[1] if len(parts) >= 2 else cls_name
+                is_enemy = (target_prefix != ref_prefix)
+            elif not ref_prefix and not cls_name:
+                is_enemy = False
+            else:
                 is_enemy = True
             if enemy_only and not is_enemy:
                 continue
+            # Validate position: skip if too far or zeroed
+            if cam_pos and dist(cam_pos, pos) > 50000:
+                continue
             yield {
                 "is_local": pawn == local_pawn,
+                "is_spectating": is_spectating and pawn == ref_pawn,
                 "pos": pos,
                 "actor": pawn,
                 "player_state": ps,
-                "idx": i,
+                "idx": player_idx,
                 "role": role,
                 "is_hunter": is_hunter,
                 "is_survivor": is_survivor,
                 "is_enemy": is_enemy,
+                "class_name": cls_name,
             }
 
     def get_skeleton_positions(self, actor):
@@ -929,3 +998,7 @@ class MecchaESP:
         ok = resp.get("success", False)
         print(f"[CAMO] kill {'ok' if ok else 'failed'}: {resp}")
         return ok
+
+
+
+

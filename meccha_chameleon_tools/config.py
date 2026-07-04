@@ -5,13 +5,15 @@ import os
 from dataclasses import dataclass, field, asdict
 from typing import Tuple, List
 
-CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "esp_config.json")
+CONFIG_FILE = os.path.join(
+    os.environ.get("APPDATA", os.path.expanduser("~")), "MecchaCamouflage", "esp_config.json")
 
 
 @dataclass
 class Config:
     # ESP basics
     enabled: bool = True
+    esp_fps: int = 30
     dot_esp: bool = True
     box_esp: bool = False
     corner_box: bool = False
@@ -25,8 +27,12 @@ class Config:
     enemy_only: bool = False
 
     # Colors
+    show_teammates: bool = True
+
+    # Colors
     enemy_color: Tuple[int, int, int] = (255, 0, 0)
     local_color: Tuple[int, int, int] = (0, 255, 0)
+    teammate_color: Tuple[int, int, int] = (255, 255, 0)
     skeleton_color: Tuple[int, int, int] = (0, 255, 255)
     box_color: Tuple[int, int, int] = (255, 255, 255)
     radar_color: Tuple[int, int, int] = (255, 255, 255)
@@ -66,6 +72,9 @@ class Config:
     camouflage_sample_size: int = 5
     camouflage_opacity: int = 100
 
+    # Language
+    language: str = "en"
+
     # Game directory
     game_directory: str = r"C:\Program Files (x86)\Steam\steamapps\common\MECCA CHAMELEON\Chameleon\Binaries\Win64"
 
@@ -84,14 +93,14 @@ class Config:
 def config_to_dict(config: Config) -> dict:
     d = asdict(config)
     # Convert tuples to lists for JSON
-    for key in ("enemy_color", "local_color", "skeleton_color", "box_color", "radar_color", "visible_color", "not_visible_color"):
+    for key in ("enemy_color", "local_color", "teammate_color", "skeleton_color", "box_color", "radar_color", "visible_color", "not_visible_color"):
         d[key] = list(d[key])
     return d
 
 
 def config_from_dict(d: dict) -> Config:
     # Convert lists back to tuples
-    for key in ("enemy_color", "local_color", "skeleton_color", "box_color", "radar_color", "visible_color", "not_visible_color"):
+    for key in ("enemy_color", "local_color", "teammate_color", "skeleton_color", "box_color", "radar_color", "visible_color", "not_visible_color"):
         if key in d and isinstance(d[key], list):
             d[key] = tuple(d[key])
     # Flatten bone_indices if stored as list of pairs
@@ -103,7 +112,8 @@ def config_from_dict(d: dict) -> Config:
 def save_config(config: Config, path: str = CONFIG_FILE):
     try:
         d = config_to_dict(config)
-        with open(path, "w") as f:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
             json.dump(d, f, indent=2)
         return True
     except Exception:

@@ -5,6 +5,7 @@ from dataclasses import dataclass, fields as dc_fields
 import ctypes
 import tkinter as tk
 from tkinter import messagebox
+from meccha_chameleon_tools.i18n import tr, set_language as i18n_set_lang, LANGUAGES
 
 # ---------------------------------------------------------------------------
 # Config
@@ -234,12 +235,12 @@ class CamoWindow(tk.Tk):
         frame = tk.Frame(self, bg=BG, highlightbackground="#2a2a3e", highlightthickness=1)
         frame.pack(fill="both", expand=True, padx=4, pady=4)
 
-        title = tk.Label(frame, text="MECCHA CAMOUFLAGE", bg=BG, fg=ACCENT,
+        title = tk.Label(frame, text=tr("camo_title"), bg=BG, fg=ACCENT,
                          font=("Segoe UI", 11, "bold"))
         title.pack(pady=(8, 4))
 
         self.cb_var = tk.BooleanVar(value=self.config.camouflage_enabled)
-        cb = tk.Checkbutton(frame, text="Enable Camouflage", variable=self.cb_var,
+        cb = tk.Checkbutton(frame, text=tr("camo_enable"), variable=self.cb_var,
                            bg=BG, fg=FG, selectcolor=BG, activebackground=BG,
                            activeforeground=FG, font=("Segoe UI", 10))
         cb.pack(anchor="w", padx=pad)
@@ -248,18 +249,18 @@ class CamoWindow(tk.Tk):
         sep = tk.Frame(frame, bg="#2a2a3e", height=1)
         sep.pack(fill="x", padx=pad, pady=4)
 
-        info = tk.Label(frame, text="Launches bridge, triggers F10 to paint",
+        info = tk.Label(frame, text=tr("camo_info").replace('\n', ' '),
                        bg=BG, fg="#888", font=("Segoe UI", 9), wraplength=250)
         info.pack(padx=pad, pady=(0, 2))
 
-        self.status = tk.Label(frame, text="Ready", bg=BG, fg="#888",
+        self.status = tk.Label(frame, text=tr("camo_ready"), bg=BG, fg="#888",
                               font=("Segoe UI", 9))
         self.status.pack(pady=(0, 4))
 
         btn_frame = tk.Frame(frame, bg=BG)
         btn_frame.pack(pady=(0, 8))
 
-        self.btn_paint = tk.Button(btn_frame, text="Paint Now", width=14,
+        self.btn_paint = tk.Button(btn_frame, text=tr("camo_paint_now"), width=14,
                                    bg=BTN_GREEN, fg="#ccc", activebackground="#3a6a4a",
                                    activeforeground="#fff", relief="flat", bd=0,
                                    font=("Segoe UI", 10, "bold"),
@@ -267,7 +268,7 @@ class CamoWindow(tk.Tk):
         self.btn_paint.pack(side="left", padx=4)
         self.btn_paint.bind("<Button-1>", lambda e: self._paint())
 
-        self.btn_stop = tk.Button(btn_frame, text="Stop Camo", width=14,
+        self.btn_stop = tk.Button(btn_frame, text=tr("camo_stop").replace(" (F9)", ""), width=14,
                                   bg=BTN_RED, fg="#ccc", activebackground="#6a3a3a",
                                   activeforeground="#fff", relief="flat", bd=0,
                                   font=("Segoe UI", 10, "bold"),
@@ -283,8 +284,8 @@ class CamoWindow(tk.Tk):
         close_btn.place(relx=1.0, x=-4, y=4, anchor="ne")
 
         # Watermark
-        wm = tk.Label(frame, text="Meccha Chameleon Tools",
-                      bg=BG, fg="#333333", font=("Segoe UI", 7))
+        wm = tk.Label(frame, text=tr("app_watermark"),
+                      bg=BG, fg="#ffffff22", font=("Segoe UI", 7))
         wm.pack(side="bottom", anchor="se", padx=4, pady=2)
 
     def _bind_drag(self):
@@ -301,28 +302,29 @@ class CamoWindow(tk.Tk):
 
     def _set_status(self, text, color="#888"):
         self.status.configure(text=text, fg=color)
-        if text not in ("Ready",):
-            self.after(3000, lambda: self._set_status("Ready"))
+        ready_text = tr("camo_ready")
+        if text != ready_text:
+            self.after(3000, lambda: self._set_status(ready_text))
 
     def _paint(self):
         if self._camo_thread and self._camo_thread.is_alive():
             return
-        self._set_status("Painting...", ACCENT)
+        self._set_status(tr("camo_painting"), ACCENT)
         self._camo_thread = threading.Thread(target=self._paint_worker, daemon=True)
         self._camo_thread.start()
 
     def _paint_worker(self):
         ok = self.engine.camo_apply()
-        self.after(0, lambda: self._set_status("Painted!" if ok else "Paint failed",
+        self.after(0, lambda: self._set_status(tr("camo_painted") if ok else tr("camo_paint_failed"),
                                                 "#4c4" if ok else "#c44"))
 
     def _stop(self):
-        self._set_status("Stopping...", "#fa0")
+        self._set_status(tr("camo_stopping"), "#fa0")
         threading.Thread(target=self._stop_worker, daemon=True).start()
 
     def _stop_worker(self):
         ok = self.engine.camo_stop()
-        self.after(0, lambda: self._set_status("Stopped" if ok else "Stop failed",
+        self.after(0, lambda: self._set_status(tr("camo_stopped") if ok else tr("camo_stop_failed"),
                                                 "#4c4" if ok else "#c44"))
 
     def _close(self):
@@ -340,13 +342,14 @@ def main():
         pass
 
     config = load_config()
+    i18n_set_lang(config.language if hasattr(config, 'language') else 'en')
     engine = CamouflageEngine()
 
     if not engine._game_pid:
         root = tk.Tk()
         root.withdraw()
-        messagebox.showerror("Game Not Found",
-            "Could not find the game process.\nMake sure the game is running.")
+        messagebox.showerror(tr("game_not_found_title"),
+            tr("game_not_found_msg", error="process not found"))
         root.destroy()
         sys.exit(1)
 
