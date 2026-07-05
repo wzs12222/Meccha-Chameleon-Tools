@@ -1,5 +1,18 @@
 _current_lang = "en"
 
+def detect_system_language():
+    try:
+        import ctypes
+        windll = ctypes.windll.kernel32
+        lcid = windll.GetUserDefaultUILanguage()
+        lang_id = lcid & 0x3FF
+        # 0x04 = Chinese (Simplified)
+        if lang_id == 0x04:
+            return "zh"
+        return "en"
+    except Exception:
+        return "en"
+
 STRINGS = {
     "en": {
         # App
@@ -25,12 +38,22 @@ STRINGS = {
         "esp_show_roles": "Show Roles",
         "esp_show_distance": "Show Distance",
         "esp_snap_lines": "Snap Lines",
-        "esp_team_filter": "Team Filter",
-        "esp_enemy_only": "Enemy Only",
-        "esp_show_teammates": "Show Teammates",
         "esp_dist_scaling": "Dist. Scaling",
-            "esp_dot_radius": "Dot Radius:",
-            "esp_fps_label": "Refresh FPS:",
+        "esp_dot_radius": "Dot Radius:",
+        "esp_fps_label": "Refresh FPS:",
+        "snap_alternate": "Alternate Snap Line",
+        "snap_alt_color_label": "Alt Color:",
+        "choose_color": "Choose",
+        "snap_color_invalid": "Alternate color cannot match a player type color.",
+        "snap_alt_color_label": "Alt Color:",
+        "choose_color": "Choose",
+        "filter_conf": "Filter",
+        "filter_ok": "OK",
+        "filter_config": "Filter Config",
+        "filter_enemy": "Hide Red (Enemy)",
+        "filter_self": "Green (Self)",
+        "filter_teammate": "Yellow (Teammate)",
+        "filter_unknown": "Blue (Unknown)",
 
         # Health tab
         "health_bar": "Health Bar",
@@ -39,9 +62,9 @@ STRINGS = {
         "health_y_offset": "Y Offset:",
 
         # Radar tab
-            "radar_enabled": "Radar Enabled",
-            "radar_size": "Radar Size:",
-            "radar_range": "Radar Range:",
+        "radar_enabled": "Radar Enabled",
+        "radar_size": "Radar Size:",
+        "radar_range": "Radar Range:",
 
         # Aimbot tab
         "aimbot_enabled": "Aimbot Enabled",
@@ -78,7 +101,8 @@ STRINGS = {
 
         # Overlay
         "esp_off": "ESP OFF",
-        "no_camera": "NO CAMERA",
+            "no_camera": "NO CAMERA",
+            "waiting_for_game": "Waiting for game...",
             "you_label": "YOU",
             "enemy_label": "Enemy {idx}",
             "teammate_label": "Teammate {idx}",
@@ -128,12 +152,20 @@ STRINGS = {
         "esp_show_roles": "显示角色",
         "esp_show_distance": "显示距离",
         "esp_snap_lines": "瞄准线",
-        "esp_team_filter": "队伍过滤",
-        "esp_enemy_only": "仅敌人",
-        "esp_show_teammates": "显示队友",
         "esp_dist_scaling": "距离缩放",
         "esp_dot_radius": "圆点半径:",
         "esp_fps_label": "刷新帧率:",
+        "snap_alternate": "交替色锁线",
+        "snap_alt_color_label": "交替色:",
+        "choose_color": "选择",
+        "snap_color_invalid": "交替色不能与玩家类型颜色相同。",
+        "filter_conf": "过滤",
+        "filter_ok": "确定",
+        "filter_config": "过滤配置",
+        "filter_enemy": "红色 (敌人)",
+        "filter_self": "绿色 (自己)",
+        "filter_teammate": "黄色 (队友)",
+        "filter_unknown": "蓝色 (未知)",
 
         # Health tab
         "health_bar": "血条",
@@ -181,7 +213,8 @@ STRINGS = {
 
         # Overlay
         "esp_off": "透视已关闭",
-        "no_camera": "无摄像机",
+            "no_camera": "无摄像机",
+            "waiting_for_game": "等待游戏启动...",
             "you_label": "你",
             "enemy_label": "敌人 {idx}",
             "teammate_label": "队友 {idx}",

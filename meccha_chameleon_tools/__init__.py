@@ -19,7 +19,7 @@ from meccha_chameleon_tools.core import (
     PatternScanner, FNameResolver, UObjectArray, OffsetResolver,
 )
 from meccha_chameleon_tools.config import Config, load_config, save_config, CONFIG_FILE
-from meccha_chameleon_tools.i18n import set_language
+from meccha_chameleon_tools.i18n import set_language, detect_system_language
 from meccha_chameleon_tools.ui import Menu, Overlay
 
 
@@ -80,21 +80,21 @@ def main():
     app = QApplication(sys.argv)
 
     config = load_config()
+    if config.language == "en" and not os.path.exists(CONFIG_FILE):
+        detected = detect_system_language()
+        if detected != "en":
+            config.language = detected
     set_language(config.language)
 
     game_dir = config.game_directory
     _deploy_mitigation(game_dir)
 
+    esp = None
     try:
         esp = MecchaESP()
-    except (RuntimeError, Exception) as e:
-        QMessageBox.critical(
-            None, "Game Not Found",
-            f"Could not connect to MECCA CHAMELEON.\n\n"
-            f"Make sure the game is running before launching this tool.\n\n"
-            f"Error: {e}"
-        )
-        sys.exit(1)
+    except Exception:
+        pass
+
     menu = Menu(config, esp)
     overlay = Overlay(esp, config)
     overlay.show()
@@ -102,7 +102,8 @@ def main():
 
     ret = app.exec_()
     save_config(config)
-    esp.cleanup()
+    if esp:
+        esp.cleanup()
     sys.exit(ret)
 
 

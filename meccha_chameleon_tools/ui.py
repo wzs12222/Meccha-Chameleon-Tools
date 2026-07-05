@@ -520,12 +520,10 @@ class Menu(QWidget):
         lo.addLayout(row)
         for cfg, key in [("show_local","esp_show_local"), ("show_names","esp_show_names"),
                          ("show_distance","esp_show_distance"), ("snap_lines","esp_snap_lines"),
-                         ("enemy_only","esp_enemy_only"), ("show_roles","esp_show_roles"),
-                         ("team_filter","esp_team_filter"), ("distance_scaling","esp_dist_scaling")]:
+                         ("show_roles","esp_show_roles"),
+                         ("distance_scaling","esp_dist_scaling")]:
             cb = self._chk_i18n(key, cfg)
             lo.addWidget(cb)
-        self.cb_teammates = self._chk_i18n("esp_show_teammates", "show_teammates")
-        lo.addWidget(self.cb_teammates)
         self.cb_corner = self._chk_i18n("esp_corner_box","corner_box")
         lo.addWidget(self.cb_corner)
         dr = QHBoxLayout()
@@ -539,11 +537,32 @@ class Menu(QWidget):
         fr = QHBoxLayout()
         fr.addWidget(QLabel(tr("esp_fps_label")))
         self.spn_fps = QSpinBox()
-        self.spn_fps.setRange(10, 120)
+        self.spn_fps.setRange(10, 60)
         self.spn_fps.setValue(self.config.esp_fps)
         self.spn_fps.valueChanged.connect(lambda v: (setattr(self.config, "esp_fps", v), self._restart_timer()))
         fr.addWidget(self.spn_fps)
         lo.addLayout(fr)
+        # Snap line alternation toggle + color picker
+        sr = QHBoxLayout()
+        self.cb_snap_alt = self._chk_i18n("snap_alternate", "snap_alternate")
+        sr.addWidget(self.cb_snap_alt)
+        sr.addWidget(QLabel(tr("snap_alt_color_label")))
+        self.lbl_snap_color = QLabel("  ")
+        self.lbl_snap_color.setStyleSheet("background-color: rgb(%d,%d,%d); border:1px solid #555; min-width:24px; min-height:16px;" % self.config.snap_alt_color)
+        sr.addWidget(self.lbl_snap_color)
+        self.btn_snap_color = QPushButton(tr("choose_color"))
+        self.btn_snap_color.clicked.connect(self._choose_snap_color)
+        sr.addWidget(self.btn_snap_color)
+        lo.addLayout(sr)
+        # Separator before filter
+        sep = QFrame()
+        sep.setFrameShape(QFrame.HLine)
+        sep.setStyleSheet("color: #2a2a3e;")
+        lo.addWidget(sep)
+        # Filter button + panel
+        self.btn_filter = QPushButton(tr("filter_config"))
+        self.btn_filter.clicked.connect(self._show_filter_dialog)
+        lo.addWidget(self.btn_filter)
         lo.addStretch()
 
     def _build_health_tab(self):
@@ -686,13 +705,21 @@ class Menu(QWidget):
     def _on_lang_change(self, idx):
         new_code = LANGUAGES[idx][0]
         from PyQt5.QtWidgets import QMessageBox
+        restart_label = tr("lang_restart_now")
         msg = QMessageBox(self)
         msg.setWindowTitle(tr("lang_restart_required"))
         msg.setText(tr("lang_restart_hint"))
+        restart_btn = msg.addButton(restart_label, QMessageBox.AcceptRole)
+        msg.addButton(QMessageBox.Close)
         msg.exec_()
         self.config.language = new_code
         set_language(new_code)
         save_config(self.config)
+        if msg.clickedButton() == restart_btn:
+            import subprocess, sys, os
+            exe = os.path.abspath(sys.argv[0])
+            if os.path.isfile(exe):
+                subprocess.Popen([exe])
         QApplication.quit()
 
     def _chk(self, text, attr, i18n_key=None):
@@ -711,6 +738,55 @@ class Menu(QWidget):
         self.btn_record_key.setEnabled(False)
         self.btn_record_key.setText(tr("aimbot_press_key"))
         self._key_recorder.start()
+
+    def _choose_snap_color(self):
+        from PyQt5.QtWidgets import QColorDialog
+        from PyQt5.QtCore import Qt
+        cd = QColorDialog(QColor(*self.config.snap_alt_color))
+        cd.setWindowFlags(cd.windowFlags() | Qt.WindowStaysOnTopHint)
+        cd.setOption(QColorDialog.DontUseNativeDialog, True)
+        if cd.exec_():
+            c = cd.selectedColor()
+            rgb = (c.red(), c.green(), c.blue())
+            if rgb == self.config.enemy_color or rgb == self.config.local_color or \
+               rgb == self.config.teammate_color or rgb == self.config.unknown_color:
+                from PyQt5.QtWidgets import QMessageBox
+                QMessageBox.warning(self, tr("app_title"), tr("snap_color_invalid"))
+                return
+            self.config.snap_alt_color = rgb
+            self.lbl_snap_color.setStyleSheet("background-color: rgb(%d,%d,%d); border:1px solid #555; min-width:24px; min-height:16px;" % rgb)
+
+    def _show_filter_dialog(self):
+        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QCheckBox, QPushButton, QLabel
+        from PyQt5.QtCore import Qt
+        dlg = QDialog(self)
+        dlg.setWindowTitle(tr("filter_config"))
+        dlg.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.Dialog | Qt.WindowCloseButtonHint)
+        dlg.setFixedSize(260, 220)
+        dlg.setStyleSheet("""
+            QDialog { background-color: #1a1a28; color: #ccc; }
+            QLabel { color: #8ab4f8; font-size: 12px; font-weight: bold; }
+            QCheckBox { color: #ccc; font-size: 11px; spacing: 8px; padding: 4px 0; }
+            QCheckBox::indicator { width: 15px; height: 15px; border-radius: 3px; border: 1px solid #444; background: #1a1a28; }
+            QCheckBox::indicator:checked { background: #3a6ea5; border-color: #5a8ec5; }
+            QPushButton { background-color: #22223a; color: #ccc; border: 1px solid #33334a; padding: 5px 14px; border-radius: 4px; font-size: 11px; min-width: 60px; }
+            QPushButton:hover { background-color: #2e2e4a; border-color: #4a4a6a; }
+        """)
+        lo = QVBoxLayout(dlg)
+        lo.setContentsMargins(12, 8, 12, 8)
+        lo.setSpacing(6)
+        lo.addWidget(QLabel(tr("filter_conf")))
+        pairs = [("filter_hide_enemy", "filter_enemy"), ("filter_hide_self", "filter_self"),
+                 ("filter_hide_teammate", "filter_teammate"), ("filter_hide_unknown", "filter_unknown")]
+        for attr, key in pairs:
+            cb = QCheckBox(tr(key))
+            cb.setChecked(getattr(self.config, attr))
+            cb.toggled.connect(lambda checked, a=attr: setattr(self.config, a, checked))
+            lo.addWidget(cb)
+        btn_ok = QPushButton(tr("filter_ok"))
+        btn_ok.clicked.connect(dlg.accept)
+        lo.addWidget(btn_ok)
+        dlg.exec_()
 
     def _save_config(self):
         if save_config(self.config):
@@ -836,6 +912,9 @@ class Overlay(QWidget):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._tick_overlay)
         self._restart_timer()
+        self._attach_timer = QTimer(self)
+        self._attach_timer.timeout.connect(self._try_attach)
+        self._attach_timer.start(2000)
 
         self.game_hwnd = self._find_game_window()
         self._resize_to_game()
@@ -864,6 +943,17 @@ class Overlay(QWidget):
                 self.setGeometry(0, 0, 1920, 1080)
         except Exception:
             self.setGeometry(0, 0, 1920, 1080)
+
+    def _try_attach(self):
+        if self.esp is None:
+            try:
+                from meccha_chameleon_tools.core import MecchaESP
+                self.esp = MecchaESP()
+                self._reader_running = True
+                self._reader_thread = threading.Thread(target=self._reader_loop, daemon=True)
+                self._reader_thread.start()
+            except Exception:
+                pass
 
     def _poll_keys(self):
         VK_INSERT = 0x2D
@@ -912,12 +1002,10 @@ class Overlay(QWidget):
     def _reader_loop(self):
         while getattr(self, '_reader_running', False):
             try:
-                if self.config and self.config.enabled:
+                if self.config and self.config.enabled and self.esp:
                     cam = self.esp.get_camera()
                     players = list(self.esp.iter_players(
                         include_local=self.config.show_local,
-                        team_filter=self.config.team_filter,
-                        enemy_only=self.config.enemy_only,
                     ))
                     with self._cache_lock:
                         self._cached_cam = cam
@@ -949,9 +1037,30 @@ class Overlay(QWidget):
             self._rendering = False
             return
 
+        if self.esp is None:
+            painter.setPen(QPen(QColor(180, 180, 180)))
+            painter.drawText(10, 20, tr("waiting_for_game"))
+            self._rendering = False
+            return
+
         with self._cache_lock:
             cam = self._cached_cam
-            all_players = self._cached_players
+            raw = self._cached_players
+        role_detection_ok = any(
+            p.get("is_hunter") or p.get("is_survivor") for p in raw
+        )
+        all_players = []
+        for p in raw:
+            is_unknown = not role_detection_ok and not p.get("is_local", False) and not p.get("is_enemy", False)
+            if p["is_local"] and self.config.filter_hide_self:
+                continue
+            if not p["is_local"] and p.get("is_enemy", False) and self.config.filter_hide_enemy:
+                continue
+            if not p["is_local"] and not p.get("is_enemy", False) and not is_unknown and self.config.filter_hide_teammate:
+                continue
+            if is_unknown and self.config.filter_hide_unknown:
+                continue
+            all_players.append(p)
 
         if not cam:
             painter.setPen(QPen(QColor(255, 255, 255)))
@@ -968,24 +1077,11 @@ class Overlay(QWidget):
                     local_is_hunter = p["is_hunter"]
                     break
 
-        # Detect if role/faction detection is working
-        # If ANY player has a detected role (is_hunter/survivor), detection works.
-        # If ALL are "Unknown", detection failed → fallback to all-red (original behavior)
-        role_detection_ok = any(
-            p.get("is_hunter") or p.get("is_survivor") for p in all_players
-        )
-
         for pdata in all_players:
             is_local = pdata["is_local"]
             is_enemy = pdata.get("is_enemy", False)
-            # Skip teammates when show_teammates is off ONLY if detection works
-            # If detection failed, there ARE no teammates (all are enemies)
-            if role_detection_ok and not is_local and not is_enemy and not self.config.show_teammates:
+            if not is_local and not is_enemy and not self.config.show_teammates:
                 continue
-            if not role_detection_ok and not is_local and not is_enemy:
-                # Detection failed: treat all non-local as enemies
-                is_enemy = True
-                pdata["is_enemy"] = True
 
             pos = pdata["pos"]
             actor = pdata["actor"]
@@ -1009,17 +1105,13 @@ class Overlay(QWidget):
             # Behind-wall detection
             behind_wall = not self.esp._is_visible(actor)
 
-            # Pick color
-            neutral = not role_detection_ok
+            is_unknown = not role_detection_ok and not is_local and not is_enemy
             if is_local:
                 color = self.config.local_color
-            elif neutral:
-                color = (0, 80, 180)
+            elif is_unknown:
+                color = self.config.unknown_color
             elif is_enemy:
-                if self.config.enemy_only:
-                    color = self.config.not_visible_color if behind_wall else self.config.visible_color
-                else:
-                    color = self.config.enemy_color
+                color = self.config.enemy_color
             else:
                 color = self.config.teammate_color
 
@@ -1029,7 +1121,7 @@ class Overlay(QWidget):
             if self.config.dot_esp:
                 radius = int(self.config.dot_radius * scale)
                 r = max(2, radius)
-                if neutral:
+                if is_unknown:
                     painter.setPen(QPen(QColor(0, 0, 0), 2))
                     painter.setBrush(QColor(*color))
                     painter.drawEllipse(int(dsx - r), int(dsy - r), r * 2, r * 2)
@@ -1066,30 +1158,34 @@ class Overlay(QWidget):
             if self.config.snap_lines:
                 x0, y0 = int(w / 2), int(h)
                 x1, y1 = int(sx), int(sy)
-                # Alternating-color snap line (theme + purple cross pattern)
-                purple = QColor(128, 0, 128)
+                alt_color = self.config.snap_alt_color
                 theme = QColor(*color)
                 seg_len = 8
                 dx_, dy_ = x1 - x0, y1 - y0
                 dist_ = int(math.sqrt(dx_*dx_ + dy_*dy_))
                 if dist_ > 0:
-                    for t in range(0, dist_, seg_len):
-                        t2 = min(t + seg_len, dist_)
-                        ratio1 = t / dist_
-                        ratio2 = t2 / dist_
-                        px1 = int(x0 + dx_ * ratio1)
-                        py1 = int(y0 + dy_ * ratio1)
-                        px2 = int(x0 + dx_ * ratio2)
-                        py2 = int(y0 + dy_ * ratio2)
-                        alt = (t // seg_len) % 2
-                        painter.setPen(QPen(purple if alt else theme, 2))
-                        painter.drawLine(px1, py1, px2, py2)
+                    if self.config.snap_alternate:
+                        alt_qcolor = QColor(*alt_color)
+                        for t in range(0, dist_, seg_len):
+                            t2 = min(t + seg_len, dist_)
+                            ratio1 = t / dist_
+                            ratio2 = t2 / dist_
+                            px1 = int(x0 + dx_ * ratio1)
+                            py1 = int(y0 + dy_ * ratio1)
+                            px2 = int(x0 + dx_ * ratio2)
+                            py2 = int(y0 + dy_ * ratio2)
+                            alt = (t // seg_len) % 2
+                            painter.setPen(QPen(alt_qcolor if alt else theme, 2))
+                            painter.drawLine(px1, py1, px2, py2)
+                    else:
+                        painter.setPen(QPen(theme, 2))
+                        painter.drawLine(x0, y0, x1, y1)
 
             label_parts = []
             if self.config.show_names:
                 if is_local:
                     label_parts.append(tr("you_label"))
-                elif neutral:
+                elif is_unknown:
                     pass
                 elif is_enemy:
                     label_parts.append(tr("enemy_label", idx=idx))

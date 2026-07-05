@@ -628,28 +628,7 @@ class MecchaESP:
         return "Unknown", False, False, ""
 
     def _is_visible(self, actor):
-        # DISABLED: behind-wall detection is unreliable across UE5 versions.
-        # The visibility flags (0x258/0x260/0x250) vary by game build.
-        # Always return True to keep snap lines and colors consistent.
         return True
-        # Original attempt kept for reference:
-        # if not actor:
-        #     return True
-        # try:
-        #     root = rp(self.pm, actor + self.offsets["AActor::RootComponent"])
-        #     if root:
-        #         for off in (0x258, 0x260, 0x250):
-        #             try:
-        #                 v = ru32(self.pm, root + off)
-        #                 if v == 0:
-        #                     return False
-        #                 if v == 1:
-        #                     return True
-        #             except Exception:
-        #                 continue
-        # except Exception:
-        #     pass
-        # return True
 
     # ------
     def _find_spectate_target(self, cam_pos, players_list):
@@ -668,7 +647,7 @@ class MecchaESP:
                 best_idx = i
         return best_idx
 
-    def iter_players(self, include_local=True, team_filter=False, enemy_only=False):
+    def iter_players(self, include_local=True):
         world = self._get_world()
         if not world:
             return
@@ -742,8 +721,6 @@ class MecchaESP:
                 is_enemy = False
             else:
                 is_enemy = True
-            if enemy_only and not is_enemy:
-                continue
             # Validate position: skip if too far or zeroed
             if cam_pos and dist(cam_pos, pos) > 50000:
                 continue

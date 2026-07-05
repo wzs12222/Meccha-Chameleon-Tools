@@ -34,9 +34,9 @@ All ESP features are fully external (memory read). Camouflage uses a bundled bri
 | Self (local player) | Green | Green alternating with purple | Always visible if Show Local is on |
 | Enemy (opposing faction) | Red | Red alternating with purple | Turns purple in Enemy Only mode when occluded |
 | Teammate (same faction) | Yellow | Yellow alternating with purple | Configurable via teammate_color |
-| Unknown / Observer | Blue with black outline | Blue alternating with purple | No faction label shown -- role and distance only |
+| Unknown (lobby, unspawned) | Blue with black outline | Blue alternating with purple | No faction label shown -- role and distance only |
 
-Snap lines always use an alternating pattern: 8px of the player's theme color, then 8px of purple. This is the default and only snap line style.
+Snap lines use an alternating pattern: 8px of the player's theme color, then 8px of the configured alternate color (default purple). The alternation can be disabled or the alternate color changed in the ESP tab.
 
 ---
 
@@ -81,7 +81,7 @@ Requirements: Windows 10/11, game running in windowed/borderless mode.
 
 The menu organises options across five tabs selected from a sidebar:
 
-**ESP** - Enable/disable, style toggles (Dot / 2D Box / Corner Box / Skeleton), Show Local Player, Names, Show Roles (Hunter/Survivor), Distance, Snap Lines, Team Filter, Enemy Only, Show Teammates, Distance Scaling, dot radius, visible/not-visible coloring, Refresh FPS (10-120).
+**ESP** - Enable/disable, style toggles (Dot / 2D Box / Corner Box / Skeleton), Show Local Player, Names, Show Roles (Hunter/Survivor), Distance, Snap Lines, Distance Scaling, dot radius, Refresh FPS (10-60), Snap Line Alternation (on/off with color picker), Filter Config (button opens panel to hide/show Enemy/Self/Teammate/Unknown by category).
 
 **HEALTH** - Health bar toggle, shield bar toggle, model height, Y offset.
 
@@ -212,7 +212,7 @@ The FNameResolver auto-detects UE4, UE5, and custom header-layout variants. The 
 - **Show Teammates toggle** -- new checkbox in the ESP tab to control whether same-faction players are displayed, independent of Enemy Only mode.
 - **Alternating snap lines** -- every snap line now alternates between the player's theme color and purple in 8px segments, replacing the previous solid line style.
 - **Background memory reader** -- game data (camera, players, health) is read in a separate thread at ~10 reads/sec. The render loop uses a thread-safe cache, eliminating stutter when memory reads take longer than the frame interval.
-- **Configurable overlay FPS** -- new slider in the ESP tab (10-120, default 30) controls the timer interval.
+- **Configurable overlay FPS** -- new slider in the ESP tab (10-60, default 30) controls the timer interval.
 - **Observer mode support** -- when the local player is dead or spectating, the tool locates the spectated player by camera proximity and uses their faction as reference.
 - **Config persistence fix** -- config file path changed to `%APPDATA%\MecchaCamouflage\esp_config.json` so settings survive PyInstaller builds.
 - **Fixed: all players shown as red** -- color logic now respects the `is_enemy` flag computed by `iter_players()`.

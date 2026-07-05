@@ -23,16 +23,22 @@ class Config:
     show_roles: bool = True
     show_distance: bool = True
     snap_lines: bool = True
+    snap_alternate: bool = True
+    snap_alt_color: Tuple[int, int, int] = (128, 0, 128)
     team_filter: bool = False
-    enemy_only: bool = False
-
-    # Colors
     show_teammates: bool = True
+
+    # Filter: check to hide that category (replaces old enemy_only)
+    filter_hide_enemy: bool = False
+    filter_hide_self: bool = False
+    filter_hide_teammate: bool = False
+    filter_hide_unknown: bool = False
 
     # Colors
     enemy_color: Tuple[int, int, int] = (255, 0, 0)
     local_color: Tuple[int, int, int] = (0, 255, 0)
     teammate_color: Tuple[int, int, int] = (255, 255, 0)
+    unknown_color: Tuple[int, int, int] = (0, 80, 180)
     skeleton_color: Tuple[int, int, int] = (0, 255, 255)
     box_color: Tuple[int, int, int] = (255, 255, 255)
     radar_color: Tuple[int, int, int] = (255, 255, 255)
@@ -93,14 +99,14 @@ class Config:
 def config_to_dict(config: Config) -> dict:
     d = asdict(config)
     # Convert tuples to lists for JSON
-    for key in ("enemy_color", "local_color", "teammate_color", "skeleton_color", "box_color", "radar_color", "visible_color", "not_visible_color"):
+    for key in ("enemy_color", "local_color", "teammate_color", "unknown_color", "skeleton_color", "box_color", "radar_color", "visible_color", "not_visible_color", "snap_alt_color"):
         d[key] = list(d[key])
     return d
 
 
 def config_from_dict(d: dict) -> Config:
     # Convert lists back to tuples
-    for key in ("enemy_color", "local_color", "teammate_color", "skeleton_color", "box_color", "radar_color", "visible_color", "not_visible_color"):
+    for key in ("enemy_color", "local_color", "teammate_color", "unknown_color", "skeleton_color", "box_color", "radar_color", "visible_color", "not_visible_color", "snap_alt_color"):
         if key in d and isinstance(d[key], list):
             d[key] = tuple(d[key])
     # Flatten bone_indices if stored as list of pairs
