@@ -109,6 +109,12 @@ def dist(a, b):
         (a[2] - b[2]) ** 2
     )
 
+def dist_2d(a, b):
+    return math.sqrt(
+        (a[0] - b[0]) ** 2 +
+        (a[2] - b[2]) ** 2
+    )
+
 # ---------------------------------------------------------------------------
 # Pattern scanner
 # ---------------------------------------------------------------------------
@@ -706,6 +712,20 @@ class MecchaESP:
             pass
         return True
 
+    def _find_spectate_target(self, cam_pos, players_list):
+        if not cam_pos or (cam_pos[0] == 0 and cam_pos[1] == 0 and cam_pos[2] == 0):
+            return None
+        best_idx = None
+        best_dist = 800.0
+        for i, (pawn, ps, pos) in enumerate(players_list):
+            if not pos:
+                continue
+            d = dist_2d(cam_pos, pos)
+            if d < best_dist:
+                best_dist = d
+                best_idx = i
+        return best_idx
+
     # ------
     def iter_players(self, include_local=True, team_filter=False, enemy_only=False):
         world = self._get_world()
@@ -721,9 +741,9 @@ class MecchaESP:
         local_pawn = 0
         if local_pc:
             local_pawn = rp(self.pm, local_pc + self.offsets["APlayerController::AcknowledgedPawn"])
-        local_role, local_is_hunter, local_is_survivor = "Unknown", False, False
-        if local_pawn:
-            local_role, local_is_hunter, local_is_survivor = self._detect_role(local_pawn)
+        local_cam = self.get_camera()
+        cam_pos = local_cam["loc"] if local_cam else None
+        raw_players = []
         seen = set()
         for i in range(pa_count):
             ps = rp(self.pm, pa_data + i * 8)
@@ -733,21 +753,37 @@ class MecchaESP:
             pawn = rp(self.pm, ps + self.offsets["APlayerState::PawnPrivate"])
             if not pawn:
                 continue
-            if not include_local and pawn == local_pawn:
-                continue
             pos = self.get_actor_root_pos(pawn)
             if pos is None:
                 continue
+            raw_players.append((pawn, ps, pos))
+        ref_is_hunter, ref_is_survivor = False, False
+        is_spectating = False
+        if local_pawn:
+            _, ref_is_hunter, ref_is_survivor = self._detect_role(local_pawn)
+        elif cam_pos and raw_players:
+            spec_idx = self._find_spectate_target(cam_pos, raw_players)
+            if spec_idx is not None:
+                spec_pawn = raw_players[spec_idx][0]
+                _, ref_is_hunter, ref_is_survivor = self._detect_role(spec_pawn)
+                is_spectating = True
+        for i, (pawn, ps, pos) in enumerate(raw_players):
+            if not include_local and pawn == local_pawn:
+                continue
             role, is_hunter, is_survivor = self._detect_role(pawn)
             is_enemy = False
-            if local_is_hunter and is_survivor:
-                is_enemy = True
-            elif local_is_survivor and is_hunter:
-                is_enemy = True
+            if is_hunter or is_survivor:
+                if ref_is_hunter and is_survivor:
+                    is_enemy = True
+                elif ref_is_survivor and is_hunter:
+                    is_enemy = True
             if enemy_only and not is_enemy:
+                continue
+            if cam_pos and dist(cam_pos, pos) > 50000:
                 continue
             yield {
                 "is_local": pawn == local_pawn,
+                "is_spectating": is_spectating,
                 "pos": pos,
                 "actor": pawn,
                 "player_state": ps,
