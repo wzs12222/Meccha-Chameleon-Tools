@@ -1218,14 +1218,784 @@ class Menu(QWidget):
 
 
 # ---------------------------------------------------------------------------
-# Overlay widget (replaced by C++ Direct2D overlay - meccha-overlay.exe)
-# Kept as stub for backward compatibility with legacy scripts
+# Overlay widget (Python reference - will be replaced by C++ after full parity)
 # ---------------------------------------------------------------------------
+
 class Overlay(QWidget):
     def __init__(self, esp: MecchaESP, config: Config):
         super().__init__()
         self.esp = esp
         self.config = config
-        self.hide()  # Replaced by C++ Direct2D overlay (meccha-overlay.exe)
+        self.setWindowFlags(
+            Qt.FramelessWindowHint
+            | Qt.WindowStaysOnTopHint
+            | Qt.Tool
+            | Qt.WindowTransparentForInput
+        )
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.setWindowTitle("Meccha Chameleon Tools - Overlay")
+        self._key_states = {}
+        self._cursor_shown = True
+        self._tp_key_state = False
+        self._player_mod_active = False
+        self._camo_notification = ""
+        self._camo_notification_tick = 0
 
-    pass
+        self._rendering = False
+        self._cache_lock = threading.Lock()
+        self._cached_cam = None
+        self._cached_players = []
+        self._reader_running = True
+        self._reader_thread = threading.Thread(target=self._reader_loop, daemon=True)
+        self._reader_thread.start()
+        # Terrain cache
+        self._terrain_cache = None
+        self._last_terrain_time = 0.0
+
+        # HV state (thread-safe, updated via callbacks)
+        self._hv_exposure_cloud = []
+        self._hv_paths = []
+        self._hv_bridge_ok = False
+        self._hv3d_started = False
+        self._hv_target_idx = 0
+
+        # HV timer (all TCP in bg threads)
+        self._hv_timer = QTimer(self)
+        self._hv_timer.timeout.connect(self._hv_tick)
+        self._hv_timer.start(500)
+
+        # Terrain refresh timer
+        self._terrain_immediate = True
+        self._terrain_timer = QTimer(self)
+        self._terrain_timer.timeout.connect(lambda: self._tick_terrain(force=False))
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self._tick_overlay)
+        self.timer.start(1000 // max(10, min(60, self.config.esp_fps)))
+
+        self._attach_timer = QTimer(self)
+        self._attach_timer.timeout.connect(self._try_attach)
+        self._attach_timer.start(2000)
+
+        self.game_hwnd = self._find_game_window()
+        self._resize_to_game()
+
+        self.key_timer = QTimer(self)
+        self.key_timer.timeout.connect(self._poll_keys)
+        self.key_timer.start(50)
+
+    def _find_game_window(self):
+        try:
+            import win32gui
+            return win32gui.FindWindow(None, "Chameleon  ")
+        except Exception:
+            return 0
+
+    def _resize_to_game(self):
+        try:
+            import win32gui
+            if self.game_hwnd:
+                rect = win32gui.GetClientRect(self.game_hwnd)
+                tl = win32gui.ClientToScreen(self.game_hwnd, (rect[0], rect[1]))
+                br = win32gui.ClientToScreen(self.game_hwnd, (rect[2], rect[3]))
+                self.setGeometry(tl[0], tl[1], br[0] - tl[0], br[1] - tl[1])
+            else:
+                self.setGeometry(0, 0, 1920, 1080)
+        except Exception:
+            self.setGeometry(0, 0, 1920, 1080)
+
+    def _tick_terrain(self, force=False):
+        """Refresh terrain. force=True for immediate first draw."""
+        if not self.esp or not self.config.radar_terrain:
+            return
+        now = time.time()
+        if not force and now - self._last_terrain_time < 30:
+            return
+        self._last_terrain_time = now
+        try:
+            segs = self.esp.scan_terrain()
+            if segs:
+                self._terrain_cache = simplify_segments(segs)
+        except Exception:
+            pass
+
+    def _hv_tick(self):
+        """Non-blocking tick 鈥?all TCP is fire-and-forget + immediate terrain."""
+        # Immediate first terrain draw
+        if self.config.radar_terrain and self._terrain_immediate and self.esp:
+            self._terrain_immediate = False
+            self._tick_terrain(force=True)
+            self._terrain_timer.start(10000)
+
+        if not self.esp or not self.config.hypervision_enabled:
+            return
+        try:
+            cam = self.esp.get_camera()
+            if not cam:
+                return
+            with self._cache_lock:
+                players = list(self._cached_players)
+            if not players:
+                return
+
+            # Cache bridge status; auto-inject at most once per 30s
+            self._hv_bridge_ok = ping_fast()
+            log.debug(f"Bridge status: {'ALIVE' if self._hv_bridge_ok else 'DEAD'}")
+            if not self._hv_bridge_ok and self.esp is not None:
+                now = time.time()
+                last = getattr(self, '_last_inject_attempt', 0.0)
+                if now - last > 30:
+                    self._last_inject_attempt = now
+                    log.info("Attempting bridge DLL injection...")
+                    bg_ensure_bridge()
+                else:
+                    log.debug(f"Bridge injection cooldown ({now-last:.0f}/30s)")
+
+            enemies = [p for p in players if not p.get("is_local", True) and p.get("is_enemy", False)]
+
+            # Test sphere: virtual enemy for debugging without actual game enemy
+            if self.config.hv_test_sphere:
+                test_pos = (self.config.hv_test_x, self.config.hv_test_y, self.config.hv_test_z)
+                enemies = [{"pos": test_pos, "idx": 999}]
+
+            if not enemies:
+                if self._hv3d_started:
+                    bg_stop_hv()
+                    self._hv3d_started = False
+                return
+
+            # Round-robin one target per tick
+            self._hv_target_idx = (self._hv_target_idx + 1) % len(enemies)
+            tgt = enemies[self._hv_target_idx]
+            tp, pp = tgt["pos"], cam["loc"]
+
+            # 3D in-engine (bridge required)
+            if self._hv_bridge_ok:
+                q = {"low": 0, "medium": 1, "high": 2, "ultra": 2}.get(self.config.hv_quality, 1)
+                if not self._hv3d_started:
+                    bg_start_hv(tp[0], tp[1], tp[2], pp[0], pp[1], pp[2], q)
+                    self._hv3d_started = True
+                else:
+                    bg_update_hv(tp[0], tp[1], tp[2], pp[0], pp[1], pp[2])
+
+            # 2D overlay: fire visibility scan + path find in bg thread
+            if self._hv_bridge_ok:
+                q_step = {"low": 120, "medium": 80, "high": 50, "ultra": 35}.get(self.config.hv_quality, 80)
+                q_zl = {"low": 10, "medium": 15, "high": 20, "ultra": 25}.get(self.config.hv_quality, 15)
+
+                def _on_cloud(cloud):
+                    self._hv_exposure_cloud = cloud
+                    if cloud:
+                        bg_path_find(pp[0], pp[1], pp[2],
+                                     tp[0], tp[1], tp[2], cloud,
+                                     lambda paths: setattr(self, '_hv_paths', paths))
+
+                bg_visibility_scan(tp[0], tp[1], tp[2],
+                                   step=q_step, z_layers=q_zl, radius=1500,
+                                   cb=_on_cloud)
+                log.debug(f"HV: sent visibility_scan for target at ({tp[0]:.0f},{tp[1]:.0f},{tp[2]:.0f})")
+            else:
+                # Python fallback: simple straight line from player to target
+                self._hv_exposure_cloud = [
+                    [tp[0] + dx, tp[1] + dy, tp[2] + dz]
+                    for dx in [-200, -100, 0, 100, 200]
+                    for dy in [-200, -100, 0, 100, 200]
+                    for dz in [-100, 0, 100]
+                ]
+                steps = 10
+                self._hv_paths = [[
+                    [pp[0] + (tp[0] - pp[0]) * i / steps,
+                     pp[1] + (tp[1] - pp[1]) * i / steps,
+                     pp[2] + (tp[2] - pp[2]) * i / steps]
+                    for i in range(steps + 1)
+                ]]
+                log.debug(f"HV: fallback path (no bridge) to ({tp[0]:.0f},{tp[1]:.0f},{tp[2]:.0f})")
+        except Exception:
+            pass
+
+    def _try_attach(self):
+        if self.esp is None:
+            try:
+                from meccha_chameleon_tools.core import MecchaESP
+                log.info("Attempting game attach...")
+                self.esp = MecchaESP()
+                self._reader_running = True
+                self._reader_thread = threading.Thread(target=self._reader_loop, daemon=True)
+                self._reader_thread.start()
+                log.info("Game attached successfully")
+            except Exception as e:
+                log.warn(f"Game attach failed: {e}")
+
+    def _restart_timer(self):
+        interval = max(8, min(100, 1000 // max(10, min(60, self.config.esp_fps))))
+        self.timer.start(interval)
+
+    def _reader_loop(self):
+        while getattr(self, '_reader_running', False):
+            try:
+                if self.config and self.config.enabled and self.esp:
+                    cam = self.esp.get_camera()
+                    players = list(self.esp.iter_players(
+                        include_local=self.config.show_local,
+                    ))
+                    with self._cache_lock:
+                        self._cached_cam = cam
+                        self._cached_players = players
+            except Exception:
+                pass
+            time.sleep(0.1)
+
+    def _tick_overlay(self):
+        if self._rendering:
+            return
+        self._rendering = True
+        self._resize_to_game()
+        self.update()
+
+    def update_overlay(self):
+        self._resize_to_game()
+        self.update()
+
+    def _poll_keys(self):
+        VK_INSERT = 0x2D
+        VK_END = 0x23
+        for vk, name in [(VK_INSERT, "insert"), (0x70, "f1")]:
+            state = ctypes.windll.user32.GetAsyncKeyState(vk) & 0x8000
+            if state and not self._key_states.get(name):
+                for w in QApplication.topLevelWidgets():
+                    if isinstance(w, Menu):
+                        w.setVisible(not w.isVisible())
+                        break
+            self._key_states[name] = bool(state)
+        paint_vk = vk_from_name(self.config.paint_hotkey)
+        paint_down = bool(ctypes.windll.user32.GetAsyncKeyState(paint_vk) & 0x8000)
+        if paint_down and not self._key_states.get("camo_paint"):
+            import threading
+            threading.Thread(target=self._run_paint, daemon=True).start()
+        self._key_states["camo_paint"] = paint_down
+        stop_vk = vk_from_name(self.config.stop_hotkey)
+        stop_down = bool(ctypes.windll.user32.GetAsyncKeyState(stop_vk) & 0x8000)
+        if stop_down and not self._key_states.get("camo_stop"):
+            stop_paint()
+        self._key_states["camo_stop"] = stop_down
+        end_down = bool(ctypes.windll.user32.GetAsyncKeyState(VK_END) & 0x8000)
+        if end_down and not self._key_states.get("end"):
+            QApplication.quit()
+        self._key_states["end"] = end_down
+        cursor_should_be = not self.config.show_cursor
+        if cursor_should_be != self._cursor_shown:
+            while ctypes.windll.user32.ShowCursor(cursor_should_be) >= 0:
+                pass
+            while ctypes.windll.user32.ShowCursor(not cursor_should_be) < 0:
+                pass
+            ctypes.windll.user32.ShowCursor(cursor_should_be)
+            self._cursor_shown = cursor_should_be
+        tp_vk = vk_from_name(self.config.teleport_collectible_key)
+        tp_down = bool(ctypes.windll.user32.GetAsyncKeyState(tp_vk) & 0x8000)
+        if tp_down and not self._tp_key_state:
+            now = time.time()
+            last = getattr(self, '_last_tp_time', 0.0)
+            if now - last > 1.0 and self._hv_bridge_ok:
+                self._last_tp_time = now
+                self.esp.teleport_collectible(self.config.teleport_collectible_key)
+        self._tp_key_state = tp_down
+        if self.config.player_mod_enabled and not self._player_mod_active:
+            self.esp.player_mod(self.config.player_speed_mult, self.config.player_jump_mult)
+            self._player_mod_active = True
+        elif not self.config.player_mod_enabled and self._player_mod_active:
+            self.esp.player_mod(1.0, 1.0)
+            self._player_mod_active = False
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        font = QFont("Consolas", 10)
+        painter.setFont(font)
+
+        w = self.width()
+        h = self.height()
+
+        if not self.config.enabled:
+            painter.setPen(QPen(QColor(255, 255, 255)))
+            painter.drawText(10, 20, _tr("ESP OFF"))
+            self._rendering = False
+            return
+
+        if self.esp is None:
+            painter.setPen(QPen(QColor(180, 180, 180)))
+            painter.drawText(10, 20, _tr("Waiting for game..."))
+            painter.setPen(QPen(QColor(100, 100, 100)))
+            painter.drawText(10, 40, "Status: No Game Process")
+            self._rendering = False
+            return
+
+        with self._cache_lock:
+            cam = self._cached_cam
+            raw = self._cached_players
+        all_players = list(raw)
+
+        if not cam or not cam_valid(cam):
+            painter.setPen(QPen(QColor(255, 255, 255)))
+            painter.drawText(10, 20, _tr("NO CAMERA"))
+            self._rendering = False
+            return
+
+        role_detection_ok = any(
+            p.get("is_hunter") or p.get("is_survivor") for p in all_players
+        )
+        filtered = []
+        for p in all_players:
+            is_unknown = not role_detection_ok and not p.get("is_local", False) and not p.get("is_enemy", False)
+            if p["is_local"] and self.config.filter_hide_self:
+                continue
+            if not p["is_local"] and p.get("is_enemy", False) and self.config.filter_hide_enemy:
+                continue
+            if not p["is_local"] and not p.get("is_enemy", False) and not is_unknown and self.config.filter_hide_teammate:
+                continue
+            if is_unknown and self.config.filter_hide_unknown:
+                continue
+            filtered.append(p)
+        all_players = filtered
+
+        local_pos = None
+        local_is_hunter = None
+        if all_players:
+            for p in all_players:
+                if p["is_local"]:
+                    local_pos = p["pos"]
+                    local_is_hunter = p["is_hunter"]
+                    break
+
+        for pdata in all_players:
+            is_local = pdata["is_local"]
+            pos = pdata["pos"]
+            actor = pdata["actor"]
+            ps = pdata["player_state"]
+            idx = pdata["idx"]
+            role = pdata.get("role", "Unknown")
+            is_enemy = pdata.get("is_enemy", False)
+
+            d = dist(pos, cam["loc"])
+            scale = 1.0
+            if self.config.distance_scaling and d > 0:
+                scale = self.config.scale_reference_dist / d
+                scale = max(0.3, min(scale, 3.0))
+
+            screen_center = w2s(pos, cam, w, h)
+            if not screen_center:
+                continue
+
+            sx, sy = screen_center
+            sy += self.config.box_y_offset
+
+            is_hunter = pdata.get("is_hunter", False)
+            is_survivor = pdata.get("is_survivor", False)
+            is_unknown = not role_detection_ok and not is_local and not is_enemy
+            if not is_local:
+                if is_hunter and not self.config.hunter_esp:
+                    continue
+                if is_survivor and not self.config.survivor_esp:
+                    continue
+
+            # Determine base color (team) and role color
+            if is_local:
+                base_color = self.config.local_color
+            elif is_unknown:
+                base_color = self.config.unknown_color
+            elif is_enemy:
+                if self.config.enemy_only:
+                    visible = self.esp._is_visible(actor)
+                    base_color = self.config.visible_color if visible else self.config.not_visible_color
+                else:
+                    base_color = self.config.enemy_color
+            else:
+                base_color = self.config.teammate_color
+
+            role_color = None
+            if is_hunter:
+                role_color = self.config.hunter_visual_color
+            elif is_survivor:
+                role_color = self.config.survivor_visual_color
+
+            cm = self.config.color_mode
+            if cm == "role" and role_color:
+                color = role_color
+            else:
+                color = base_color
+
+            # Invincible: always a gold X overlay, independent of color mode
+            is_invincible = False
+            if self.config.invincible_detect and not is_local:
+                is_invincible = self.esp.get_invincible(actor)
+
+            dsx, dsy = clamp_screen(sx, sy - self.config.box_y_offset, w, h)
+            dsy += self.config.box_y_offset
+
+            if self.config.dot_esp:
+                radius = int(self.config.dot_radius * scale)
+                r = max(2, radius)
+                self._draw_dot(painter, dsx, dsy, r, color)
+                if is_invincible:
+                    self._draw_invincible_x(painter, dsx, dsy, r)
+
+            rot = self.esp.get_actor_root_rotation(actor) if actor else None
+            hw = self.config.box_height_world / 3.0
+            pen_width = max(1, self.config.line_thickness)
+            if self.config.box_esp and not self.config.corner_box:
+                draw_2d_box(painter, pos, cam, w, h,
+                            self.config.box_height_world, hw, rot, color, scale, pen_width)
+            if self.config.corner_box:
+                draw_corner_box(painter, pos, cam, w, h,
+                                self.config.box_height_world, hw, rot, color, scale, 0.25, pen_width)
+
+            if self.config.skeleton_esp and actor and not is_local:
+                bones = self.esp.get_skeleton_positions(actor)
+                if bones:
+                    draw_skeleton(painter, bones, cam, w, h, self.config.skeleton_color)
+                else:
+                    indices = self.config.bone_indices
+                    bones2 = self.esp.get_skeleton_positions_by_indices(actor, indices)
+                    if bones2:
+                        draw_skeleton(painter, bones2, cam, w, h, self.config.skeleton_color)
+
+            if self.config.health_bar or self.config.shield_bar:
+                health_info = self.esp.get_health(actor, ps)
+                if health_info and health_info[0] is not None:
+                    hp, sh = health_info
+                    bar_x = dsx - 12 * scale
+                    bar_y = dsy - 20 * scale
+                    draw_health_bar(painter, bar_x, bar_y, 24 * scale, 4, hp, sh if self.config.shield_bar else None)
+
+            if self.config.snap_lines:
+                x0, y0 = int(w / 2), int(h)
+                x1, y1 = int(sx), int(sy)
+                dx_, dy_ = x1 - x0, y1 - y0
+                dist_ = int(math.sqrt(dx_*dx_ + dy_*dy_))
+                if dist_ > 0:
+                    if cm == "hybrid" and role_color:
+                        seg_len = 8
+                        alt_qcolor = QColor(*role_color)
+                        theme = QColor(*color)
+                        for t in range(0, dist_, seg_len):
+                            t2 = min(t + seg_len, dist_)
+                            ratio1 = t / dist_
+                            ratio2 = t2 / dist_
+                            px1 = int(x0 + dx_ * ratio1)
+                            py1 = int(y0 + dy_ * ratio1)
+                            px2 = int(x0 + dx_ * ratio2)
+                            py2 = int(y0 + dy_ * ratio2)
+                            alt = (t // seg_len) % 2
+                            painter.setPen(QPen(alt_qcolor if alt else theme, 1))
+                            painter.drawLine(px1, py1, px2, py2)
+                    else:
+                        painter.setPen(QPen(QColor(*color), 1))
+                        painter.drawLine(x0, y0, x1, y1)
+
+            label_parts = []
+            if self.config.show_names:
+                if is_local:
+                    label_parts.append(_tr("YOU"))
+                elif is_unknown:
+                    pass
+                elif is_enemy:
+                    label_parts.append(_tr("Enemy {idx}", idx=idx))
+                else:
+                    label_parts.append(_tr("Teammate {idx}", idx=idx))
+            if self.config.show_roles and role != "Unknown":
+                label_parts.append(_tr(role))
+            if is_invincible:
+                label_parts.append("[INV]")
+            if self.config.show_distance:
+                dm = int(d / 100)
+                label_parts.append(f"{dm}m")
+            if label_parts:
+                label_x = int(dsx + self.config.dot_radius * scale + 4)
+                label_y = int(dsy)
+                if cm == "hybrid" and role_color and role != "Unknown":
+                    painter.setPen(QPen(QColor(*color)))
+                    text = " | ".join(p for p in label_parts if p != _tr(role))
+                    painter.drawText(label_x, label_y, text)
+                    role_text = _tr(role)
+                    role_w = painter.fontMetrics().width(text + " | ") if hasattr(painter.fontMetrics(), 'width') else len(text + " | ") * 7
+                    painter.setPen(QPen(QColor(*role_color)))
+                    painter.drawText(label_x + role_w, label_y, role_text)
+                else:
+                    painter.setPen(QPen(QColor(*color)))
+                    text = " | ".join(label_parts)
+                    painter.drawText(label_x, label_y, text)
+
+        if self.config.draw_all:
+            actor_count = 0
+            for adata in self.esp.iter_actors(max_actors=500, class_filter="Collectible"):
+                d = dist(adata["pos"], cam["loc"])
+                if d > self.config.draw_all_max_distance:
+                    continue
+                s = w2s(adata["pos"], cam, w, h)
+                if not s:
+                    continue
+                actor_count += 1
+                act_color = (100, 255, 100)
+                painter.setPen(QPen(QColor(*act_color), 1))
+                sx_a, sy_a = int(s[0]), int(s[1])
+                painter.drawEllipse(sx_a - 2, sy_a - 2, 4, 4)
+                if self.config.draw_all_names:
+                    cname = adata["class_name"][:20] if adata["class_name"] else "Actor"
+                    painter.drawText(sx_a + 4, sy_a + 4, cname)
+            if actor_count > 0:
+                painter.setPen(QPen(QColor(150, 255, 150)))
+                painter.drawText(w - 200, 60, _tr("Items: {count}", count=actor_count))
+
+        non_local = [p for p in all_players if not p.get("is_local", False)]
+        status_parts = []
+        status_parts.append(_tr("Players: {count}", count=len(non_local)))
+        if self.esp:
+            status_parts.append(_tr("Attached"))
+        else:
+            status_parts.append(_tr("Waiting..."))
+        if self._hv_bridge_ok:
+            status_parts.append("HV:ON")
+        painter.setPen(QPen(QColor(255, 255, 255)))
+        painter.drawText(10, 20, " | ".join(status_parts))
+
+        # HyperVision overlay (primary 鈥?always drawn regardless of bridge)
+        if self.config.hypervision_enabled and cam:
+            try:
+                # Exposure cloud dots
+                for pt in self._hv_exposure_cloud:
+                    s = w2s((pt[0], pt[1], pt[2]) if not isinstance(pt, tuple) else pt, cam, w, h)
+                    if s:
+                        dx, dy = int(s[0]), int(s[1])
+                        painter.setPen(Qt.NoPen)
+                        painter.setBrush(QColor(0, 255, 100, 40))
+                        painter.drawEllipse(dx - 6, dy - 6, 12, 12)
+                # Navigation paths
+                for path in self._hv_paths:
+                    pts_s = []
+                    for wp in path:
+                        s = w2s((wp[0], wp[1], wp[2]), cam, w, h)
+                        if s:
+                            pts_s.append((int(s[0]), int(s[1])))
+                    for i in range(len(pts_s) - 1):
+                        painter.setPen(QPen(QColor(0, 255, 50, 180), 2))
+                        painter.drawLine(pts_s[i][0], pts_s[i][1], pts_s[i+1][0], pts_s[i+1][1])
+                    if pts_s:
+                        painter.setPen(QPen(QColor(0, 255, 50), 3))
+                        painter.setBrush(QColor(0, 255, 50, 180))
+                        painter.drawEllipse(pts_s[-1][0] - 4, pts_s[-1][1] - 4, 8, 8)
+            except Exception:
+                pass
+
+        if self.config.aimbot_enabled or self.config.magnet_enabled:
+            cx, cy = w / 2, h / 2
+            magnet_active = self.config.magnet_enabled and self._magnet_key_held()
+            aim_active = self.config.aimbot_enabled and self._aim_key_held()
+            if magnet_active:
+                fov = self.config.magnet_fov
+            elif self.config.aimbot_enabled:
+                fov = self.config.aimbot_fov
+            else:
+                fov = 0
+            best_target = self._find_best_target(cam, w, h, fov if fov > 0 else None)
+            if best_target:
+                if self.config.aimbot_show_fov and self.config.aimbot_enabled:
+                    painter.setPen(QPen(QColor(255, 255, 255), 1))
+                    painter.setBrush(Qt.NoBrush)
+                    painter.drawEllipse(
+                        int(cx - self.config.aimbot_fov),
+                        int(cy - self.config.aimbot_fov),
+                        self.config.aimbot_fov * 2,
+                        self.config.aimbot_fov * 2,
+                    )
+                if magnet_active:
+                    self._magnet_at(best_target[0], best_target[1])
+                elif aim_active:
+                    self._aim_at(best_target[0], best_target[1])
+
+        painter.setPen(QPen(QColor(255, 255, 255, 40)))
+        wm_font = QFont("Segoe UI", 8)
+        painter.setFont(wm_font)
+        painter.drawText(w - 160, h - 10, _tr("Meccha Chameleon Tools"))
+        painter.setFont(font)
+
+        if self._camo_notification:
+            elapsed = ctypes.windll.kernel32.GetTickCount() - self._camo_notification_tick
+            if elapsed < 5000:
+                painter.setPen(QPen(QColor(255, 200, 100, 220)))
+                notif_font = QFont("Consolas", 12)
+                painter.setFont(notif_font)
+                painter.drawText(12, 50, self._camo_notification)
+                painter.setFont(font)
+            else:
+                self._camo_notification = ""
+
+        if self.config.radar_enabled and local_pos:
+            radar_x = w - self.config.radar_size - 20
+            radar_y = 20 + self.config.radar_size // 2
+            enemy_list = [p for p in all_players if not p["is_local"]]
+            for p in enemy_list:
+                is_enemy = p.get("is_enemy", False)
+                is_unknown = not role_detection_ok and not p.get("is_enemy", False)
+                if is_unknown:
+                    p["color"] = self.config.unknown_color
+                elif is_enemy:
+                    p["color"] = self.config.enemy_color
+                else:
+                    p["color"] = self.config.teammate_color
+            terrain = getattr(self, "_terrain_cache", None)
+            cz = local_pos[2] if local_pos else 0
+            draw_radar(painter, cam, local_pos, enemy_list,
+                       radar_x, radar_y,
+                       self.config.radar_size, self.config.radar_range,
+                       self.config.radar_color, self.config.radar_opacity,
+                       terrain_segments=terrain, current_z=cz)
+
+        self._rendering = False
+
+    def _draw_dot(self, painter, cx, cy, r, color):
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(*color))
+        painter.drawEllipse(int(cx - r), int(cy - r), r * 2, r * 2)
+
+    def _draw_invincible_x(self, painter, cx, cy, r):
+        gold = QColor(255, 215, 0)
+        painter.setPen(QPen(gold, max(1, r // 2)))
+        off = int(r * 0.4)
+        painter.drawLine(int(cx - off), int(cy - off), int(cx + off), int(cy + off))
+        painter.drawLine(int(cx + off), int(cy - off), int(cx - off), int(cy + off))
+
+    # -----------------------------------------------------------------------
+    # Aimbot
+    # -----------------------------------------------------------------------
+    def _run_paint(self):
+        """Paint operation triggered by hotkey."""
+        err = ensure_bridge_ready(self.config.game_process_name)
+        if err:
+            self._camo_notification = f"Camo: {err}"
+        else:
+            result = paint_now(self.config)
+            if result.get("success") is True:
+                self._camo_notification = "Camo: Painting..."
+            else:
+                msg = result.get("message", "Camo failed")
+                self._camo_notification = f"Camo: {msg}"
+        self._camo_notification_tick = ctypes.windll.kernel32.GetTickCount()
+
+    def _aim_key_held(self):
+        vk = vk_from_name(self.config.aimbot_key)
+        return bool(ctypes.windll.user32.GetAsyncKeyState(vk) & 0x8000)
+
+    def _magnet_key_held(self):
+        vk = vk_from_name(self.config.magnet_hold_key)
+        return bool(ctypes.windll.user32.GetAsyncKeyState(vk) & 0x8000)
+
+    def _find_best_target(self, camera, screen_w, screen_h, fov_override=None):
+        world = self.esp._get_world()
+        local_pc = self.esp._get_local_controller(world) if world else 0
+        local_pawn = rp(self.esp.pm, local_pc + self.esp.offsets["APlayerController::AcknowledgedPawn"]) if local_pc else 0
+        local_pos = None
+        if local_pawn:
+            root = rp(self.esp.pm, local_pawn + self.esp.offsets["AActor::RootComponent"])
+            if root:
+                local_pos = rvec3(self.esp.pm, root + self.esp.offsets["USceneComponent::RelativeLocation"])
+
+        if not local_pawn:
+            return None
+        cx, cy = screen_w / 2, screen_h / 2
+        cam_loc = camera["loc"]
+        best_dist = float("inf")
+        best_target = None
+        for pdata in self.esp.iter_players(include_local=False, team_filter=self.config.team_filter):
+            if pdata["is_local"]:
+                continue
+            pos = pdata["pos"]
+            if local_pos:
+                dself = dist(pos, local_pos)
+                if dself < 150.0:
+                    continue
+            dcam = dist(pos, cam_loc)
+            if dcam < 100.0:
+                continue
+            aim_pos = (
+                pos[0], pos[1],
+                pos[2] + self.config.aimbot_target_offset,
+            )
+            s = w2s(aim_pos, camera, screen_w, screen_h)
+            if not s:
+                continue
+            dx = s[0] - cx
+            dy = s[1] - cy
+            d = math.sqrt(dx * dx + dy * dy)
+            max_fov = fov_override if fov_override is not None else self.config.aimbot_fov
+            if d <= max_fov and d < best_dist:
+                best_dist = d
+                best_target = (aim_pos, camera)
+        return best_target
+
+    def _vector_to_rotation(self, vec):
+        x, y, z = vec
+        length = math.sqrt(x * x + y * y + z * z)
+        if length == 0:
+            return (0.0, 0.0, 0.0)
+        x, y, z = x / length, y / length, z / length
+        pitch = -math.degrees(math.asin(z))
+        yaw = math.degrees(math.atan2(y, x))
+        return (pitch, yaw, 0.0)
+
+    def _read_control_rotation(self):
+        world = self.esp._get_world()
+        if not world:
+            return None
+        pc = self.esp._get_local_controller(world)
+        if not pc:
+            return None
+        addr = pc + self.esp.offsets["AController::ControlRotation"]
+        return (
+            rfloat(self.esp.pm, addr),
+            rfloat(self.esp.pm, addr + 4),
+            rfloat(self.esp.pm, addr + 8),
+        )
+
+    def _write_control_rotation(self, rot):
+        world = self.esp._get_world()
+        if not world:
+            return False
+        pc = self.esp._get_local_controller(world)
+        if not pc:
+            return False
+        addr = pc + self.esp.offsets["AController::ControlRotation"]
+        wfloat(self.esp.pm, addr, rot[0])
+        wfloat(self.esp.pm, addr + 4, rot[1])
+        wfloat(self.esp.pm, addr + 8, rot[2])
+        return True
+
+    def _aim_at(self, target_pos, camera):
+        if not camera:
+            return
+        current = self._read_control_rotation()
+        if current is None:
+            return
+        dx = target_pos[0] - camera["loc"][0]
+        dy = target_pos[1] - camera["loc"][1]
+        dz = target_pos[2] - camera["loc"][2]
+        target_rot = self._vector_to_rotation((dx, dy, dz))
+        smooth = self.config.aimbot_smooth
+        new_pitch = current[0] + (target_rot[0] - current[0]) * smooth
+        new_yaw = current[1] + (target_rot[1] - current[1]) * smooth
+        self._write_control_rotation((new_pitch, new_yaw, current[2]))
+
+    def _magnet_at(self, target_pos, camera):
+        """Magnet aim: instant snap with smoothing option."""
+        if not camera:
+            return
+        current = self._read_control_rotation()
+        if current is None:
+            return
+        dx = target_pos[0] - camera["loc"][0]
+        dy = target_pos[1] - camera["loc"][1]
+        dz = target_pos[2] - camera["loc"][2]
+        target_rot = self._vector_to_rotation((dx, dy, dz))
+        strength = self.config.magnet_strength
+        new_pitch = current[0] + (target_rot[0] - current[0]) * strength
+        new_yaw = current[1] + (target_rot[1] - current[1]) * strength
+        self._write_control_rotation((new_pitch, new_yaw, current[2]))
+
