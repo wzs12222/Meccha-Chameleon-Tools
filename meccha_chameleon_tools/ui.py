@@ -602,7 +602,7 @@ class Menu(QWidget):
         self.spn_fps = QSpinBox()
         self.spn_fps.setRange(10, 60)
         self.spn_fps.setValue(self.config.esp_fps)
-        self.spn_fps.valueChanged.connect(lambda v: (setattr(self.config, "esp_fps", v), self._restart_timer()))
+        self.spn_fps.valueChanged.connect(lambda v: setattr(self.config, "esp_fps", v))
         fr.addWidget(self.spn_fps)
         lo.addLayout(fr)
         sep = QFrame()
@@ -613,9 +613,6 @@ class Menu(QWidget):
         self.btn_filter.clicked.connect(self._show_filter_dialog)
         lo.addWidget(self.btn_filter)
         lo.addStretch()
-
-    def _restart_timer(self):
-        pass
 
     def _build_health_tab(self):
         p = self._pages["HEALTH"]
@@ -1072,7 +1069,7 @@ class Overlay(QWidget):
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._tick_overlay)
-        self._restart_timer()
+        self.timer.start(1000 // max(10, min(60, self.config.esp_fps)))
 
         self._attach_timer = QTimer(self)
         self._attach_timer.timeout.connect(self._try_attach)
