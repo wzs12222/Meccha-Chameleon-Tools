@@ -38,7 +38,7 @@ exe = EXE(
     debug=False,
     strip=False,
     upx=True,
-    console=False,
-    disable_windowed_traceback=False,
+    console=True,
+    disable_windowed_traceback=True,
     icon=None,
 )
