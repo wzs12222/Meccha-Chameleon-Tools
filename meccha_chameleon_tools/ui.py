@@ -842,8 +842,6 @@ class Menu(QWidget):
         self.cmb_hv_q.currentIndexChanged.connect(lambda idx: setattr(self.config, "hv_quality", hv_q_codes[idx]))
         qr.addWidget(self.cmb_hv_q)
         lo.addLayout(qr)
-        self.cb_test = self._chk(_tr("Test Sphere (virtual enemy)"), "hv_test_sphere")
-        lo.addWidget(self.cb_test)
         lo.addStretch()
 
     def _build_radar_tab(self):
@@ -1353,11 +1351,6 @@ class Overlay(QWidget):
 
             enemies = [p for p in players if not p.get("is_local", True) and p.get("is_enemy", False)]
 
-            # Test sphere: virtual enemy for debugging without actual game enemy
-            if self.config.hv_test_sphere:
-                test_pos = (self.config.hv_test_x, self.config.hv_test_y, self.config.hv_test_z)
-                enemies = [{"pos": test_pos, "idx": 999}]
-
             if not enemies:
                 if self._hv3d_started:
                     bg_stop_hv()
@@ -1438,6 +1431,13 @@ class Overlay(QWidget):
                     players = list(self.esp.iter_players(
                         include_local=self.config.show_local,
                     ))
+                    # Enrich with per-player data (avoids pymem reads in paintEvent)
+                    for p in players:
+                        actor = p.get("actor")
+                        if actor:
+                            p["_health_info"] = self.esp.get_health(actor, p.get("player_state"))
+                            p["_invincible"] = self.esp.get_invincible(actor)
+                            p["_rot"] = self.esp.get_actor_root_rotation(actor)
                     with self._cache_lock:
                         self._cached_cam = cam
                         self._cached_players = players
@@ -1604,8 +1604,7 @@ class Overlay(QWidget):
                 base_color = self.config.unknown_color
             elif is_enemy:
                 if self.config.enemy_only:
-                    visible = self.esp._is_visible(actor)
-                    base_color = self.config.visible_color if visible else self.config.not_visible_color
+                    base_color = self.config.enemy_color  # visibility check moved to _reader_loop
                 else:
                     base_color = self.config.enemy_color
             else:
@@ -1623,10 +1622,8 @@ class Overlay(QWidget):
             else:
                 color = base_color
 
-            # Invincible: always a gold X overlay, independent of color mode
-            is_invincible = False
-            if self.config.invincible_detect and not is_local:
-                is_invincible = self.esp.get_invincible(actor)
+            # Invincible: use value from _reader_loop cache
+            is_invincible = pdata.get("_invincible", False) and self.config.invincible_detect and not is_local
 
             dsx, dsy = clamp_screen(sx, sy - self.config.box_y_offset, w, h)
             dsy += self.config.box_y_offset
@@ -1638,7 +1635,7 @@ class Overlay(QWidget):
                 if is_invincible:
                     self._draw_invincible_x(painter, dsx, dsy, r)
 
-            rot = self.esp.get_actor_root_rotation(actor) if actor else None
+            rot = pdata.get("_rot") if actor else None
             hw = self.config.box_height_world / 3.0
             pen_width = max(1, self.config.line_thickness)
             if self.config.box_esp and not self.config.corner_box:
@@ -1659,7 +1656,7 @@ class Overlay(QWidget):
                         draw_skeleton(painter, bones2, cam, w, h, self.config.skeleton_color)
 
             if self.config.health_bar or self.config.shield_bar:
-                health_info = self.esp.get_health(actor, ps)
+                health_info = pdata.get("_health_info")
                 if health_info and health_info[0] is not None:
                     hp, sh = health_info
                     bar_x = dsx - 12 * scale

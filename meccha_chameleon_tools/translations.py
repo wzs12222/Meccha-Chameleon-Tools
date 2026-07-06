@@ -163,7 +163,6 @@ _TR = {
     "Medium": {"DE": "Mittel", "FR": "Moyen", "ES": "Medio", "CN": "\u4e2d", "JP": "\u4e2d", "KR": "\uc911\uac04"},
     "High": {"DE": "Hoch", "FR": "\u00c9lev\u00e9", "ES": "Alto", "CN": "\u9ad8", "JP": "\u9ad8\u3044", "KR": "\ub192\uc74c"},
     "Ultra": {"DE": "Ultra", "FR": "Ultra", "ES": "Ultra", "CN": "\u6781\u81f4", "JP": "\u30a6\u30eb\u30c8\u30e9", "KR": "\uc6b8\ud2b8\ub77c"},
-    "Test Sphere (virtual enemy)": {"DE": "Testsph\u00e4re (virtueller Gegner)", "FR": "Sph\u00e8re test (ennemi virtuel)", "ES": "Esfera de prueba (enemigo virtual)", "CN": "\u6d4b\u8bd5\u7403\u4f53\uff08\u865a\u62df\u654c\u4eba\uff09", "JP": "\u30c6\u30b9\u30c8\u30b9\u30d5\u30a3\u30a2\uff08\u4eee\u60f3\u6575\uff09", "KR": "\ud14c\uc2a4\ud2b8 \uad6c (\uac00\uc0c1 \uc801)"},
     "Review": {"DE": "Vorschau", "FR": "Aper\u00e7u", "ES": "Vista previa", "CN": "\u9884\u89c8", "JP": "\u30d7\u30ec\u30d3\u30e5\u30fc", "KR": "\ubbf8\ub9ac\ubcf4\uae30"},
     "Unreview": {"DE": "Vorschau r\u00fcckg\u00e4ngig", "FR": "Annuler aper\u00e7u", "ES": "Rever vista previa", "CN": "\u53d6\u6d88\u9884\u89c8", "JP": "\u30d7\u30ec\u30d3\u30e5\u30fc\u3092\u5143\u306b\u623b\u3059", "KR": "\ubbf8\ub9ac\ubcf4\uae30 \ucde8\uc18c"},
 }
