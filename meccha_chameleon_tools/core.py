@@ -692,10 +692,7 @@ class MecchaESP:
                 continue
 
     def scan_terrain(self, center=None, range_xy=5000.0, z_samples=3, z_range=1000.0):
-        """Scan static mesh actors and produce Z-sliced wall segments for radar.
-        
-        Returns list of (x1,y1,x2,y2, seg_type, z_level) tuples.
-        """
+        """Scan all actors with non-zero bounds for radar wall outlines."""
         segments = []
         if center is None:
             cam = self.get_camera()
@@ -708,13 +705,18 @@ class MecchaESP:
         half = range_xy * 0.5
         count = 0
         for obj in self.objects.iter_objects():
-            if count >= 3000:
+            if count >= 5000:
                 break
             try:
                 cls_name = self.objects.class_name(obj)
                 if not cls_name or cls_name.startswith("Default__"):
                     continue
-                if "Mesh" not in cls_name and "MeshComponent" not in cls_name and "StaticMesh" not in cls_name and "Building" not in cls_name and "Wall" not in cls_name and "Floor" not in cls_name and "SM_" not in cls_name:
+                # Skip known non-terrain classes
+                if any(x in cls_name for x in ("Pawn", "Character", "Player", "Controller", "GameMode",
+                                                "GameState", "PlayerState", "AIController", "HUD",
+                                                "Camera", "SpringArm", "PostProcess", "Light",
+                                                "Fog", "Sky", "Volumetric", "Decal", "Particle",
+                                                "Niagara", "Sound", "Widget", "TextRender")):
                     continue
                 bounds = self.get_actor_bounds(obj)
                 if not bounds:
@@ -722,6 +724,9 @@ class MecchaESP:
                 origin, extent, _ = bounds
                 ox, oy, oz = origin
                 ex, ey, ez = extent
+                # Skip zero/negligible bounds
+                if max(ex, ey, ez) < 10:
+                    continue
                 if abs(ox - center[0]) > half or abs(oy - center[1]) > half:
                     continue
                 for zi in range(z_samples):

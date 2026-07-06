@@ -1250,7 +1250,7 @@ class Overlay(QWidget):
         if self.config.radar_terrain and self._terrain_immediate and self.esp:
             self._terrain_immediate = False
             self._tick_terrain(force=True)
-            self._terrain_timer.start(30000)
+            self._terrain_timer.start(10000)
 
         if not self.esp or not self.config.hypervision_enabled:
             return
@@ -1627,30 +1627,31 @@ class Overlay(QWidget):
         painter.setPen(QPen(QColor(255, 255, 255)))
         painter.drawText(10, 20, status)
 
-        # HyperVision overlay (using cached cloud/paths from bg thread)
+        # HyperVision overlay (primary — always drawn regardless of bridge)
         if self.config.hypervision_enabled and cam:
             try:
+                # Exposure cloud dots
                 for pt in self._hv_exposure_cloud:
-                    s = w2s(tuple(pt), cam, w, h)
+                    s = w2s((pt[0], pt[1], pt[2]) if not isinstance(pt, tuple) else pt, cam, w, h)
                     if s:
                         dx, dy = int(s[0]), int(s[1])
                         painter.setPen(Qt.NoPen)
-                        painter.setBrush(QColor(0, 255, 100, 50))
-                        painter.drawEllipse(dx - 5, dy - 5, 10, 10)
+                        painter.setBrush(QColor(0, 255, 100, 40))
+                        painter.drawEllipse(dx - 6, dy - 6, 12, 12)
+                # Navigation paths
                 for path in self._hv_paths:
                     pts_s = []
                     for wp in path:
-                        s = w2s(tuple(wp), cam, w, h)
+                        s = w2s((wp[0], wp[1], wp[2]), cam, w, h)
                         if s:
                             pts_s.append((int(s[0]), int(s[1])))
                     for i in range(len(pts_s) - 1):
-                        painter.setPen(QPen(QColor(0, 255, 50, 160), 2))
+                        painter.setPen(QPen(QColor(0, 255, 50, 180), 2))
                         painter.drawLine(pts_s[i][0], pts_s[i][1], pts_s[i+1][0], pts_s[i+1][1])
                     if pts_s:
                         painter.setPen(QPen(QColor(0, 255, 50), 3))
                         painter.setBrush(QColor(0, 255, 50, 180))
-                        ex, ey = pts_s[-1]
-                        painter.drawEllipse(ex - 3, ey - 3, 6, 6)
+                        painter.drawEllipse(pts_s[-1][0] - 4, pts_s[-1][1] - 4, 8, 8)
             except Exception:
                 pass
 
