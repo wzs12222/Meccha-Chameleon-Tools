@@ -1,49 +1,12 @@
 // HyperVision — C++ Bridge Extensions
-// Add these handlers to bridge.cpp handle_request() and capabilities list.
+// Included from bridge.cpp, uses its anonymous namespace and response_json.
 
-#include <string>
-#include <vector>
-#include <cmath>
-#include <sstream>
-#include "../include/sdk.hpp"
-
-// -----------------------------------------------------------------------
-// JSON helpers (match bridge.cpp conventions)
-// -----------------------------------------------------------------------
-static std::string response_json(bool success, const std::string& stage,
-                                  int applied, int failures,
-                                  const std::string& message,
-                                  const std::string& extra = "")
+namespace
 {
-    std::string out = "{\"success\":" + std::string(success ? "true" : "false");
-    out += ",\"stage\":\"" + stage + "\"";
-    out += ",\"applied\":" + std::to_string(applied);
-    out += ",\"failures\":" + std::to_string(failures);
-    out += ",\"message\":\"" + message + "\"";
-    out += ",\"timing_ms\":{}";
-    if (!extra.empty()) out += ",\"metadata\":{" + extra + "}";
-    out += "}\n";
-    return out;
-}
-
-static std::string json_escape(const std::string& s)
-{
-    std::string out;
-    for (char c : s)
-    {
-        if (c == '"') out += "\\\"";
-        else if (c == '\\') out += "\\\\";
-        else if (c == '\n') out += "\\n";
-        else out += c;
-    }
-    return out;
-}
 
 // -----------------------------------------------------------------------
 // Line Trace
 // -----------------------------------------------------------------------
-// Requires: UWorld*, LineTraceSingleByChannel
-// Returns: hit location + normal + actor name
 
 auto handle_line_trace(const std::string& payload) -> std::string
 {
@@ -168,3 +131,5 @@ auto handle_path_find(const std::string& payload) -> std::string
                          "path find stub — implement A* on exposure graph",
                          "\"paths\":[],\"path_count\":0");
 }
+
+} // anonymous namespace
