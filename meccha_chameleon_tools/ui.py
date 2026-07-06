@@ -597,7 +597,25 @@ class Menu(QWidget):
         self.spn_dot.valueChanged.connect(lambda v: setattr(self.config, "dot_radius", v))
         dr.addWidget(self.spn_dot)
         lo.addLayout(dr)
+        fr = QHBoxLayout()
+        fr.addWidget(QLabel("Refresh FPS:"))
+        self.spn_fps = QSpinBox()
+        self.spn_fps.setRange(10, 60)
+        self.spn_fps.setValue(self.config.esp_fps)
+        self.spn_fps.valueChanged.connect(lambda v: (setattr(self.config, "esp_fps", v), self._restart_timer()))
+        fr.addWidget(self.spn_fps)
+        lo.addLayout(fr)
+        sep = QFrame()
+        sep.setFrameShape(QFrame.HLine)
+        sep.setStyleSheet("color: #2a2a3e;")
+        lo.addWidget(sep)
+        self.btn_filter = QPushButton("Filter Config")
+        self.btn_filter.clicked.connect(self._show_filter_dialog)
+        lo.addWidget(self.btn_filter)
         lo.addStretch()
+
+    def _restart_timer(self):
+        pass
 
     def _build_health_tab(self):
         p = self._pages["HEALTH"]
@@ -925,6 +943,7 @@ class Menu(QWidget):
     def _chk(self, text, attr):
         cb = QCheckBox(text)
         cb.setChecked(getattr(self.config, attr))
+        cb._cfg_attr = attr
         cb.stateChanged.connect(lambda s, a=attr: setattr(self.config, a, bool(s)))
         return cb
 
@@ -960,8 +979,52 @@ class Menu(QWidget):
         for field in dc_fields(self.config):
             if hasattr(loaded, field.name):
                 setattr(self.config, field.name, getattr(loaded, field.name))
+        for widget in self.findChildren(QCheckBox):
+            attr = getattr(widget, "_cfg_attr", None)
+            if attr and hasattr(self.config, attr):
+                widget.setChecked(getattr(self.config, attr))
+        for spin, attr in [(getattr(self, s, None), a) for s, a in [
+            ("spn_dot", "dot_radius"), ("spn_height", "box_height_world"),
+            ("spn_yoff", "box_y_offset"), ("spn_radar_size", "radar_size"),
+            ("spn_radar_range", "radar_range"), ("spn_aim_fov", "aimbot_fov"),
+            ("spn_aim_smooth", "aimbot_smooth"), ("spn_aim_off", "aimbot_target_offset"),
+        ]]:
+            if spin is not None and hasattr(self.config, attr):
+                spin.setValue(getattr(self.config, attr))
         self.btn_load.setText(_tr("Config Loaded!"))
         QTimer.singleShot(1500, lambda: self.btn_load.setText(_tr("Load Config")))
+
+    def _show_filter_dialog(self):
+        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QCheckBox, QPushButton, QLabel
+        from PyQt5.QtCore import Qt
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Filter Config")
+        dlg.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.Dialog | Qt.WindowCloseButtonHint)
+        dlg.setFixedSize(260, 220)
+        dlg.setStyleSheet("""
+            QDialog { background-color: #1a1a28; color: #ccc; }
+            QLabel { color: #8ab4f8; font-size: 12px; font-weight: bold; }
+            QCheckBox { color: #ccc; font-size: 11px; spacing: 8px; padding: 4px 0; }
+            QCheckBox::indicator { width: 15px; height: 15px; border-radius: 3px; border: 1px solid #444; background: #1a1a28; }
+            QCheckBox::indicator:checked { background: #3a6ea5; border-color: #5a8ec5; }
+            QPushButton { background-color: #22223a; color: #ccc; border: 1px solid #33334a; padding: 5px 14px; border-radius: 4px; font-size: 11px; min-width: 60px; }
+            QPushButton:hover { background-color: #2e2e4a; border-color: #4a4a6a; }
+        """)
+        lo = QVBoxLayout(dlg)
+        lo.setContentsMargins(12, 8, 12, 8)
+        lo.setSpacing(6)
+        lo.addWidget(QLabel("Hide by category:"))
+        pairs = [("filter_hide_enemy", "Red (Enemy)"), ("filter_hide_self", "Green (Self)"),
+                 ("filter_hide_teammate", "Yellow (Teammate)"), ("filter_hide_unknown", "Blue (Unknown)")]
+        for attr, label in pairs:
+            cb = QCheckBox(label)
+            cb.setChecked(getattr(self.config, attr))
+            cb.toggled.connect(lambda checked, a=attr: setattr(self.config, a, checked))
+            lo.addWidget(cb)
+        btn_ok = QPushButton("OK")
+        btn_ok.clicked.connect(dlg.accept)
+        lo.addWidget(btn_ok)
+        dlg.exec_()
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -998,9 +1061,22 @@ class Overlay(QWidget):
         self._cursor_shown = True
         self._tp_key_state = False
         self._player_mod_active = False
+
+        self._rendering = False
+        self._cache_lock = threading.Lock()
+        self._cached_cam = None
+        self._cached_players = []
+        self._reader_running = True
+        self._reader_thread = threading.Thread(target=self._reader_loop, daemon=True)
+        self._reader_thread.start()
+
         self.timer = QTimer(self)
-        self.timer.timeout.connect(self.update_overlay)
-        self.timer.start(16)
+        self.timer.timeout.connect(self._tick_overlay)
+        self._restart_timer()
+
+        self._attach_timer = QTimer(self)
+        self._attach_timer.timeout.connect(self._try_attach)
+        self._attach_timer.start(2000)
 
         self.game_hwnd = self._find_game_window()
         self._resize_to_game()
@@ -1028,6 +1104,43 @@ class Overlay(QWidget):
                 self.setGeometry(0, 0, 1920, 1080)
         except Exception:
             self.setGeometry(0, 0, 1920, 1080)
+
+    def _try_attach(self):
+        if self.esp is None:
+            try:
+                from meccha_chameleon_tools.core import MecchaESP
+                self.esp = MecchaESP()
+                self._reader_running = True
+                self._reader_thread = threading.Thread(target=self._reader_loop, daemon=True)
+                self._reader_thread.start()
+            except Exception:
+                pass
+
+    def _restart_timer(self):
+        interval = max(8, min(100, 1000 // max(10, min(60, self.config.esp_fps))))
+        self.timer.start(interval)
+
+    def _reader_loop(self):
+        while getattr(self, '_reader_running', False):
+            try:
+                if self.config and self.config.enabled and self.esp:
+                    cam = self.esp.get_camera()
+                    players = list(self.esp.iter_players(
+                        include_local=self.config.show_local,
+                    ))
+                    with self._cache_lock:
+                        self._cached_cam = cam
+                        self._cached_players = players
+            except Exception:
+                pass
+            time.sleep(0.1)
+
+    def _tick_overlay(self):
+        if self._rendering:
+            return
+        self._rendering = True
+        self._resize_to_game()
+        self.update()
 
     def update_overlay(self):
         self._resize_to_game()
@@ -1081,19 +1194,42 @@ class Overlay(QWidget):
         if not self.config.enabled:
             painter.setPen(QPen(QColor(255, 255, 255)))
             painter.drawText(10, 20, _tr("ESP OFF"))
+            self._rendering = False
             return
 
-        cam = self.esp.get_camera()
+        if self.esp is None:
+            painter.setPen(QPen(QColor(180, 180, 180)))
+            painter.drawText(10, 20, "Waiting for game...")
+            self._rendering = False
+            return
+
+        with self._cache_lock:
+            cam = self._cached_cam
+            raw = self._cached_players
+        all_players = list(raw)
+
         if not cam:
             painter.setPen(QPen(QColor(255, 255, 255)))
             painter.drawText(10, 20, _tr("NO CAMERA"))
+            self._rendering = False
             return
 
-        all_players = list(self.esp.iter_players(
-            include_local=self.config.show_local,
-            team_filter=self.config.team_filter,
-            enemy_only=self.config.enemy_only,
-        ))
+        role_detection_ok = any(
+            p.get("is_hunter") or p.get("is_survivor") for p in all_players
+        )
+        filtered = []
+        for p in all_players:
+            is_unknown = not role_detection_ok and not p.get("is_local", False) and not p.get("is_enemy", False)
+            if p["is_local"] and self.config.filter_hide_self:
+                continue
+            if not p["is_local"] and p.get("is_enemy", False) and self.config.filter_hide_enemy:
+                continue
+            if not p["is_local"] and not p.get("is_enemy", False) and not is_unknown and self.config.filter_hide_teammate:
+                continue
+            if is_unknown and self.config.filter_hide_unknown:
+                continue
+            filtered.append(p)
+        all_players = filtered
 
         local_pos = None
         local_is_hunter = None
@@ -1128,6 +1264,7 @@ class Overlay(QWidget):
 
             is_hunter = pdata.get("is_hunter", False)
             is_survivor = pdata.get("is_survivor", False)
+            is_unknown = not role_detection_ok and not is_local and not is_enemy
             if not is_local:
                 if is_hunter and not self.config.hunter_esp:
                     continue
@@ -1140,19 +1277,16 @@ class Overlay(QWidget):
                 color = self.config.local_color
             elif invincible:
                 color = self.config.invincible_color
-            elif is_hunter:
-                color = self.config.hunter_visual_color
-            elif is_survivor:
-                color = self.config.survivor_visual_color
-            else:
+            elif is_unknown:
+                color = self.config.unknown_color
+            elif is_enemy:
                 if self.config.enemy_only:
                     visible = self.esp._is_visible(actor)
-                    if visible:
-                        color = self.config.visible_color
-                    else:
-                        color = self.config.not_visible_color
+                    color = self.config.visible_color if visible else self.config.not_visible_color
                 else:
                     color = self.config.enemy_color
+            else:
+                color = self.config.teammate_color
 
             dsx, dsy = clamp_screen(sx, sy - self.config.box_y_offset, w, h)
             dsy += self.config.box_y_offset
@@ -1195,7 +1329,14 @@ class Overlay(QWidget):
 
             label_parts = []
             if self.config.show_names:
-                label_parts.append(_tr("YOU") if is_local else _tr("Enemy {idx}", idx=idx))
+                if is_local:
+                    label_parts.append(_tr("YOU"))
+                elif is_unknown:
+                    pass
+                elif is_enemy:
+                    label_parts.append(_tr("Enemy {idx}", idx=idx))
+                else:
+                    label_parts.append(f"Teammate {idx}")
             if self.config.show_roles and role != "Unknown":
                 label_parts.append(_tr(role))
             if invincible:
@@ -1272,11 +1413,20 @@ class Overlay(QWidget):
             radar_y = 20 + self.config.radar_size // 2
             enemy_list = [p for p in all_players if not p["is_local"]]
             for p in enemy_list:
-                p["color"] = self.config.enemy_color
+                is_enemy = p.get("is_enemy", False)
+                is_unknown = not role_detection_ok and not p.get("is_enemy", False)
+                if is_unknown:
+                    p["color"] = self.config.unknown_color
+                elif is_enemy:
+                    p["color"] = self.config.enemy_color
+                else:
+                    p["color"] = self.config.teammate_color
             draw_radar(painter, cam, local_pos, enemy_list,
                        radar_x, radar_y,
                        self.config.radar_size, self.config.radar_range,
                        self.config.radar_color, self.config.radar_opacity)
+
+        self._rendering = False
 
     def _draw_dot(self, painter, cx, cy, r, color):
         painter.setPen(Qt.NoPen)
