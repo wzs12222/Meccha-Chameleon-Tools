@@ -704,6 +704,7 @@ class MecchaESP:
         z_step = (z_max - z_min) / max(1, z_samples)
         half = range_xy * 0.5
         count = 0
+        t0 = time.time()
         for obj in self.objects.iter_objects():
             if count >= 5000:
                 break
@@ -742,6 +743,9 @@ class MecchaESP:
                 count += 1
             except Exception:
                 continue
+        dt = time.time() - t0
+        from meccha_chameleon_tools import logger as log
+        log.debug(f"scan_terrain: {count} objects, {len(segments)} segs, {dt*1000:.0f}ms")
         return segments
 
     def _is_visible(self, actor):

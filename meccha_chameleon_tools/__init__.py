@@ -66,6 +66,15 @@ def main():
     _set_dpi_aware()
     app = QApplication(sys.argv)
 
+    import meccha_chameleon_tools.logger as log
+    log.init()
+    log.info(f"=== MecchaCamouflage v1.8.2-wow starting ===")
+    log.info(f"Python {sys.version}")
+    log.info(f"Args: {' '.join(sys.argv)}")
+    if "--verbose" in sys.argv or "-v" in sys.argv:
+        log.enable()
+        log.info("Verbose logging enabled")
+
     config = load_config()
     if config.language == "EN" and not os.path.exists(CONFIG_FILE):
         detected = detect_system_language()

@@ -24,6 +24,7 @@ from meccha_chameleon_tools.core import (
 from meccha_chameleon_tools.config import Config, save_config, load_config
 from meccha_chameleon_tools.translations import _tr, LANGUAGE_NAMES
 from meccha_chameleon_tools.camouflage import ensure_bridge_ready, paint_now, stop_paint, is_bridge_alive
+from meccha_chameleon_tools import logger as log
 from meccha_chameleon_tools.hypervision import (ping_fast, bg_scan_terrain, bg_visibility_scan,
                                                   bg_path_find, bg_start_hv, bg_update_hv, bg_stop_hv,
                                                   bg_ensure_bridge, simplify_segments)
@@ -1331,12 +1332,14 @@ class Overlay(QWidget):
         if self.esp is None:
             try:
                 from meccha_chameleon_tools.core import MecchaESP
+                log.info("Attempting game attach...")
                 self.esp = MecchaESP()
                 self._reader_running = True
                 self._reader_thread = threading.Thread(target=self._reader_loop, daemon=True)
                 self._reader_thread.start()
-            except Exception:
-                pass
+                log.info("Game attached successfully")
+            except Exception as e:
+                log.warn(f"Game attach failed: {e}")
 
     def _restart_timer(self):
         interval = max(8, min(100, 1000 // max(10, min(60, self.config.esp_fps))))
