@@ -464,22 +464,17 @@ static D2D1_COLOR_F final_col(const PlayerData& p) {
 
 // =========================== Render - ESP ======================
 static void ren_dot(float sx, float sy, float d, const PlayerData& p) {
-    float r = std::max(2.0f, g_cfg.dot_radius * scl(d));
-    auto team = team_col(p), role = role_col(p);
-    bool hybrid = g_cfg.color_mode == "hybrid" && (p.is_hunter || p.is_survivor);
+    int r = std::max(2, (int)(g_cfg.dot_radius * scl(d)));
+    auto col = final_col(p);
+    // Python: plain filled circle with final resolved color
+    fc(sx, sy, (float)r, col);
     if (p.invincible) {
-        fc(sx, sy, r, to_c(g_cfg.invincible_color));
-        dc(sx, sy, r, team, 2.0f);
-        // Gold X
+        // Python: gold X on top of the team-colored dot (no outline, no fill change)
         g_brush->SetColor(to_c(g_cfg.invincible_color));
-        float o = r*0.4f;
-        g_rt->DrawLine({sx-o,sy-o},{sx+o,sy+o},g_brush,std::max(1.0f,r/2));
-        g_rt->DrawLine({sx+o,sy-o},{sx-o,sy+o},g_brush,std::max(1.0f,r/2));
-    } else if (hybrid) {
-        fc(sx, sy, r-1, team);       // fill = team
-        dc(sx, sy, r, role, 2.5f);   // outline = role
-    } else {
-        fc(sx, sy, r, team);
+        float o = r * 0.4f;
+        float lw = std::max(1.0f, r/2.0f);
+        g_rt->DrawLine({sx-o,sy-o},{sx+o,sy+o},g_brush,lw);
+        g_rt->DrawLine({sx+o,sy-o},{sx-o,sy+o},g_brush,lw);
     }
 }
 
@@ -557,43 +552,71 @@ static void ren_skel(float sx, float sy, float d, const PlayerData& p) {
     dl(sx, py, sx+lw, py+h*0.5f, col, lt);
 }
 static void ren_snap(float sx, float sy, UINT sw, UINT sh, const PlayerData& p) {
+    // Python: x0,y0 = bottom-center of screen, x1,y1 = player screen pos
     auto team = team_col(p), role = role_col(p);
     bool hybrid = g_cfg.color_mode == "hybrid" && (p.is_hunter || p.is_survivor);
-    float lt = (float)g_cfg.line_thickness;
-    float x0 = sw/2.0f, y0 = (float)sh;
-    float x1 = sx, y1 = sy;
-    float dx = x1-x0, dy = y1-y0;
-    float total = sqrtf(dx*dx+dy*dy);
-    if (total < 1) return;
+    int x0 = (int)sw/2, y0 = (int)sh;
+    int x1 = (int)sx, y1 = (int)sy;
+    int dx = x1 - x0, dy = y1 - y0;
+    int dist_ = (int)sqrtf((float)(dx*dx + dy*dy));
+    if (dist_ <= 0) return;
+
+    g_brush->SetColor(team);
     if (hybrid) {
-        float seg_len = 8.0f;
-        int n_seg = (int)(total/seg_len);
-        for (int i = 0; i < n_seg; i++) {
-            float t0 = i*seg_len/total, t1 = std::min((i+1)*seg_len,total)/total;
-            dl(x0+dx*t0, y0+dy*t0, x0+dx*t1, y0+dy*t1, (i%2)?role:team, lt);
+        // Python: int coords, seg_len=8, pen width=1
+        int seg_len = 8;
+        auto alt_qcolor = role;
+        auto theme = team;
+        for (int t = 0; t < dist_; t += seg_len) {
+            int t2 = (t + seg_len < dist_) ? t + seg_len : dist_;
+            float ratio1 = (float)t / dist_;
+            float ratio2 = (float)t2 / dist_;
+            int px1 = (int)(x0 + dx * ratio1);
+            int py1 = (int)(y0 + dy * ratio1);
+            int px2 = (int)(x0 + dx * ratio2);
+            int py2 = (int)(y0 + dy * ratio2);
+            g_brush->SetColor((t/seg_len)%2 ? alt_qcolor : theme);
+            g_rt->DrawLine({(float)px1,(float)py1},{(float)px2,(float)py2}, g_brush, 1.0f);
         }
     } else {
-        dl(x0, y0, x1, y1, team, lt);
+        g_brush->SetColor(team);
+        g_rt->DrawLine({(float)x0,(float)y0},{(float)x1,(float)y1}, g_brush, 1.0f);
     }
-}
-static D2D1_COLOR_F health_grad(float pct) {
-    if (pct > 0.5f) return { (1-pct)*2, 1, 0, 1 }; // yellow→green
-    return { 1, pct*2, 0, 1 }; // red→yellow
 }
 static void ren_hbar(float sx, float sy, float d, const PlayerData& p) {
     float s = scl(d);
-    float w = 24*s, h = 4*s, x = sx - w/2;
-    float y = sy - 20*s; // Above player
-    bar(x, y, w, h, p.health/100.0f, health_grad(p.health/100.0f));
+    int bw = std::max(4, (int)(24 * s)); // bar_w = max(4, w)
+    int bh = 4; // hardcoded bar_h = 4 (matching Python)
+    int x = (int)(sx - bw/2);
+    int y = (int)(sy - 20*s); // bar_y = dsy - 20 * scale (above player)
+    int spacing = 2; // Python spacing=2
+
+    // Shield (draw FIRST, below health, at y + bar_h + spacing)
     if (g_cfg.shield_bar && p.shield > 0) {
-        float sh = (float)(p.shield / 100.0);
-        bar(x, y-h-2, w, h, std::min(1.0f,sh), {0,0.47f,1,0.86f});
+        float spct = std::min(p.shield/100.0f, 1.0f);
+        int sy_ = y + bh + spacing;
+        g_brush->SetColor({30/255.0f,30/255.0f,30/255.0f,180/255.0f});
+        g_rt->FillRectangle(D2D1::RectF((float)x,(float)sy_,(float)(x+bw),(float)(sy_+bh)), g_brush);
+        g_brush->SetColor({0,120/255.0f,255/255.0f,220/255.0f});
+        g_rt->FillRectangle(D2D1::RectF((float)x,(float)sy_,(float)(x+(int)(bw*spct)),(float)(sy_+bh)), g_brush);
+    }
+    // Health (draw SECOND, at top y)
+    if (p.health >= 0) {
+        float hpct = std::max(0.0f, std::min(100.0f, p.health))/100.0f;
+        int hfill = (int)(bw * hpct);
+        g_brush->SetColor({30/255.0f,30/255.0f,30/255.0f,180/255.0f});
+        g_rt->FillRectangle(D2D1::RectF((float)x,(float)y,(float)(x+bw),(float)(y+bh)), g_brush);
+        // Gradient: r=255*(1-pct), g=255*(pct) → red→yellow→green
+        int r = (int)(255 * (1-hpct));
+        int g = (int)(255 * hpct);
+        g_brush->SetColor({r/255.0f,g/255.0f,0,220/255.0f});
+        g_rt->FillRectangle(D2D1::RectF((float)x,(float)y,(float)(x+hfill),(float)(y+bh)), g_brush);
     }
 }
 static void ren_info(float sx, float sy, float d, const PlayerData& p) {
     wchar_t buf[256];
-    float r = std::max(2.0f, g_cfg.dot_radius * scl(d));
-    float ox = sx + r + 4;
+    // Python: label_x = dsx + dot_radius * scale + 4
+    float ox = sx + g_cfg.dot_radius * scl(d) + 4;
     float y = sy;
     std::vector<D2D1_COLOR_F> cols;
     std::vector<std::wstring> parts;
@@ -663,16 +686,19 @@ static void ren_radar(UINT sw, UINT sh) {
     // Center dot (local) - always visible
     fc(cx, cy, 2.5f, to_c(g_cfg.local_color));
 
-    // Player dots (camera-relative rotation)
+        // Player dots (camera-relative rotation, matching Python)
     for (auto& p : g_players) {
         if (p.is_local) continue;
         float dx = (float)(p.pos[0] - g_cam.loc[0]);
         float dz = (float)(p.pos[2] - g_cam.loc[2]);
-        // Rotate by camera yaw so heading is "up"
-        float rx = (dx * cyaw - dz * syaw) * scale;
-        float ry_ = (dx * syaw + dz * cyaw) * scale;
-        if (fabsf(rx) > half_rs-4 || fabsf(ry_) > half_rs-4) continue;
-        fc(cx+rx, cy-ry_, 2.5f, team_col(p));
+        float d2d = sqrtf(dx*dx + dz*dz);
+        if (d2d < 1) continue;
+        float angle = atan2f(dx, dz) - g_cam.rot[1]*PI/180; // azimuth relative to camera heading
+        float rsize = d2d / range * half_rs;
+        float rx = sinf(angle) * rsize;
+        float ry = cosf(angle) * rsize;
+        if (fabsf(rx) > half_rs-4 || fabsf(ry) > half_rs-4) continue;
+        fc(cx+rx, cy+ry, 2.5f, team_col(p)); // Python: cy+ry (Y-down coords)
     }
 
     dc(cx, cy, half_rs, to_c(g_cfg.radar_color), 1);
