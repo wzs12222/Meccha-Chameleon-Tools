@@ -439,9 +439,20 @@ uint64_t mc_pattern_scan(const char* module_name, const char* pattern, const cha
     }
 
     if (!size) {
-        MEMORY_BASIC_INFORMATION mbi = {};
-        if (VirtualQueryEx(g_handle, (LPCVOID)base, &mbi, sizeof(mbi))) {
-            size = mbi.RegionSize;
+        // Read PE headers via ReadProcessMemory (not local dereference!)
+        uint8_t header_buf[4096];
+        if (read_raw(base, header_buf, sizeof(header_buf))) {
+            IMAGE_DOS_HEADER* dos = (IMAGE_DOS_HEADER*)header_buf;
+            if (dos->e_magic == IMAGE_DOS_SIGNATURE) {
+                IMAGE_NT_HEADERS64* nt = (IMAGE_NT_HEADERS64*)(header_buf + dos->e_lfanew);
+                size = nt->OptionalHeader.SizeOfImage;
+            }
+        }
+        if (!size) {
+            MEMORY_BASIC_INFORMATION mbi = {};
+            if (VirtualQueryEx(g_handle, (LPCVOID)base, &mbi, sizeof(mbi))) {
+                size = mbi.RegionSize;
+            }
         }
     }
 
@@ -508,9 +519,8 @@ uint64_t mc_uobject_get(uint32_t index) {
 
 uint32_t mc_uobject_get_name(uint64_t obj, char* out, uint32_t out_size) {
     if (!obj || !out || out_size == 0) return 0;
-    uint64_t name_ptr = mc_read_ptr(obj + OFF_UObject_NamePrivate);
-    if (!name_ptr) { out[0] = 0; return 0; }
-    uint32_t id = mc_read_u32(name_ptr);
+    // FName is stored inline at UObject+0x18: int32 ComparisonIndex + int32 Number
+    uint32_t id = mc_read_u32(obj + OFF_UObject_NamePrivate);
     if (id == 0) { out[0] = 0; return 0; }
     return mc_fname_resolve(id, out, out_size);
 }

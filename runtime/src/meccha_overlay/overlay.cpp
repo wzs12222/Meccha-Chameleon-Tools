@@ -37,6 +37,8 @@ static HWND g_wnd = nullptr, g_game = nullptr;
 static RECT g_rect = {};
 static std::atomic<bool> g_running{true};
 static int g_data_tick = 0;
+static int g_last_w = 0, g_last_h = 0;
+static bool g_engine_ok = false;
 
 // D2D
 static ID2D1Factory* g_d2d = nullptr;
@@ -177,7 +179,8 @@ static void read_game_data() {
     g_data_tick++;
     if(g_data_tick%(TARGET_FPS/20)==0) load_config();
     CameraData cam={}; cam.valid=mc_read_camera(cam.loc,cam.rot,&cam.fov);
-    if(cam.valid) g_cam=cam; if(!cam.valid&&!g_cam.valid) return;
+    if(cam.valid) { g_cam=cam; }
+    else { g_cam.valid=false; return; }
 
     static int off_rc=-1,off_rl=-1,off_aps=-1,off_pp=-1;
     static int off_gi=-1,off_lp=-1,off_pc=-1,off_ap=-1;
@@ -278,6 +281,10 @@ static void render_d2d(HDC hdc, int sw, int sh) {
     g_rt->BeginDraw();
     g_rt->Clear(D2D1::ColorF(0,0,0,0)); // transparent
 
+    if(!g_engine_ok) {
+        d2d_txt(10,20,c2f({255,100,100}),L"Engine init FAILED - incompatible game version");
+        g_rt->EndDraw(); return;
+    }
     if(!g_cam.valid) {
         d2d_txt((float)sw/2-80,(float)sh/2,c2f({128,128,128}),L"Waiting for game...");
         goto end;
@@ -458,7 +465,11 @@ static LRESULT CALLBACK wnd_proc(HWND h,UINT m,WPARAM w,LPARAM l){
 
 int WINAPI WinMain(HINSTANCE hi,HINSTANCE,LPSTR,int){
     for(int i=0;i<30;i++){if(mc_init())break;Sleep(2000);}
-    if(mc_is_attached())mc_init_engine(); load_config();
+    if(mc_is_attached()){
+        int er=mc_init_engine();
+        g_engine_ok=(er==0);
+    }
+    load_config();
     if(!init_d2d()) return 1;
 
     WNDCLASSEXW wc={sizeof(wc)}; wc.style=CS_HREDRAW|CS_VREDRAW; wc.lpfnWndProc=wnd_proc;
@@ -487,15 +498,24 @@ int WINAPI WinMain(HINSTANCE hi,HINSTANCE,LPSTR,int){
 
     if(g_cfg.show_cursor)ShowCursor(TRUE);
 
-    // Pre-blend function for alpha
     BLENDFUNCTION blend={AC_SRC_OVER,0,255,AC_SRC_ALPHA};
     POINT zero={0,0}; SIZE size={w,h};
+    g_last_w=w; g_last_h=h;
 
     while(g_running){
         MSG msg; while(PeekMessageW(&msg,0,0,0,PM_REMOVE)){TranslateMessage(&msg);DispatchMessageW(&msg);}
         if(GetWindowRect(g_game,&g_rect)){
-            SetWindowPos(g_wnd,HWND_TOPMOST,g_rect.left,g_rect.top,
-                g_rect.right-g_rect.left,g_rect.bottom-g_rect.top,SWP_SHOWWINDOW);
+            int nw=g_rect.right-g_rect.left,nh=g_rect.bottom-g_rect.top;
+            SetWindowPos(g_wnd,HWND_TOPMOST,g_rect.left,g_rect.top,nw,nh,SWP_SHOWWINDOW);
+            // Recreate DIBSection on resize
+            if(nw!=g_last_w||nh!=g_last_h){
+                SelectObject(mem_dc,old_bmp); DeleteObject(bmp);
+                bi.bmiHeader.biWidth=nw; bi.bmiHeader.biHeight=-nh;
+                bmp=CreateDIBSection(mem_dc,&bi,DIB_RGB_COLORS,&bits,0,0);
+                old_bmp=SelectObject(mem_dc,bmp);
+                size.cx=nw; size.cy=nh; g_last_w=nw; g_last_h=nh;
+            }
+            w=nw; h=nh;
         }
         read_game_data();
         render_d2d(mem_dc,w,h);
