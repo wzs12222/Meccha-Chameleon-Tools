@@ -862,11 +862,15 @@ class MecchaESP:
                 continue
             role, is_hunter, is_survivor = self._detect_role(pawn)
             is_enemy = False
-            if is_hunter or is_survivor:
-                if ref_is_hunter and is_survivor:
-                    is_enemy = True
-                elif ref_is_survivor and is_hunter:
-                    is_enemy = True
+            if ref_is_hunter or ref_is_survivor:
+                if is_hunter or is_survivor:
+                    if ref_is_hunter and is_survivor:
+                        is_enemy = True
+                    elif ref_is_survivor and is_hunter:
+                        is_enemy = True
+            else:
+                # Can't determine reference role (spectating/unknown) → default to enemy
+                is_enemy = (pawn != local_pawn)
             if enemy_only and not is_enemy:
                 continue
             if cam_pos and dist(cam_pos, pos) > 50000:
