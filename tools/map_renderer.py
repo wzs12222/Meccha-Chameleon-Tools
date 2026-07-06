@@ -96,30 +96,33 @@ def render_segments(segments, output_path, center=None, map_size=4096):
 
 
 def fetch_via_bridge():
-    """通过 bridge DLL 获取地形数据（C++ 计算）。"""
     from meccha_chameleon_tools.hypervision import _send
-    print("[*] 尝试 bridge DLL...")
+    print("[*] Bridge DLL scan_terrain...")
     r = _send("scan_terrain", {"center": [0, 0, 0], "range_xy": 50000,
-                                "z_samples": 1, "z_range": 2000}, timeout=60)
+                                "z_samples": 1, "z_range": 2000}, timeout=10)
     if r.get("success") and "segments" in r.get("metadata", {}):
         segs = r["metadata"]["segments"]
-        print(f"[+] bridge 返回 {len(segs)} 线段")
+        print(f"[+] bridge returns {len(segs)} segs")
         return [(s[0], s[1], s[2], s[3], s[4], s[5]) for s in segs]
-    print("[!] bridge 不可用")
+    print("[!] bridge not available")
     return None
 
 
 def fetch_via_python():
-    """Python pymem fallback。"""
     from meccha_chameleon_tools.core import MecchaESP
     from meccha_chameleon_tools.hypervision import simplify_segments
     print("[*] Python pymem fallback...")
-    esp = MecchaESP()
-    segs = esp.scan_terrain()
-    if segs:
-        segs = simplify_segments(segs)
-        print(f"[+] Python 返回 {len(segs)} 线段")
-    return segs
+    try:
+        esp = MecchaESP()
+        segs = esp.scan_terrain()
+        if segs:
+            segs = simplify_segments(segs)
+            print(f"[+] Python returns {len(segs)} segs")
+            return segs
+        print("[!] Python scan returned 0 segments")
+    except Exception as e:
+        print(f"[!] Python fallback failed: {e}")
+    return None
 
 
 def main():
