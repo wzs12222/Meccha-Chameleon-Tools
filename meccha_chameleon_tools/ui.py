@@ -1290,12 +1290,16 @@ class Overlay(QWidget):
 
             # Cache bridge status; auto-inject at most once per 30s
             self._hv_bridge_ok = ping_fast()
+            log.debug(f"Bridge status: {'ALIVE' if self._hv_bridge_ok else 'DEAD'}")
             if not self._hv_bridge_ok and self.esp is not None:
                 now = time.time()
                 last = getattr(self, '_last_inject_attempt', 0.0)
                 if now - last > 30:
                     self._last_inject_attempt = now
+                    log.info("Attempting bridge DLL injection...")
                     bg_ensure_bridge()
+                else:
+                    log.debug(f"Bridge injection cooldown ({now-last:.0f}/30s)")
 
             enemies = [p for p in players if not p.get("is_local", True) and p.get("is_enemy", False)]
 
@@ -1325,19 +1329,37 @@ class Overlay(QWidget):
                     bg_update_hv(tp[0], tp[1], tp[2], pp[0], pp[1], pp[2])
 
             # 2D overlay: fire visibility scan + path find in bg thread
-            q_step = {"low": 120, "medium": 80, "high": 50, "ultra": 35}.get(self.config.hv_quality, 80)
-            q_zl = {"low": 10, "medium": 15, "high": 20, "ultra": 25}.get(self.config.hv_quality, 15)
+            if self._hv_bridge_ok:
+                q_step = {"low": 120, "medium": 80, "high": 50, "ultra": 35}.get(self.config.hv_quality, 80)
+                q_zl = {"low": 10, "medium": 15, "high": 20, "ultra": 25}.get(self.config.hv_quality, 15)
 
-            def _on_cloud(cloud):
-                self._hv_exposure_cloud = cloud
-                if cloud:
-                    bg_path_find(pp[0], pp[1], pp[2],
-                                 tp[0], tp[1], tp[2], cloud,
-                                 lambda paths: setattr(self, '_hv_paths', paths))
+                def _on_cloud(cloud):
+                    self._hv_exposure_cloud = cloud
+                    if cloud:
+                        bg_path_find(pp[0], pp[1], pp[2],
+                                     tp[0], tp[1], tp[2], cloud,
+                                     lambda paths: setattr(self, '_hv_paths', paths))
 
-            bg_visibility_scan(tp[0], tp[1], tp[2],
-                               step=q_step, z_layers=q_zl, radius=1500,
-                               cb=_on_cloud)
+                bg_visibility_scan(tp[0], tp[1], tp[2],
+                                   step=q_step, z_layers=q_zl, radius=1500,
+                                   cb=_on_cloud)
+                log.debug(f"HV: sent visibility_scan for target at ({tp[0]:.0f},{tp[1]:.0f},{tp[2]:.0f})")
+            else:
+                # Python fallback: simple straight line from player to target
+                self._hv_exposure_cloud = [
+                    [tp[0] + dx, tp[1] + dy, tp[2] + dz]
+                    for dx in [-200, -100, 0, 100, 200]
+                    for dy in [-200, -100, 0, 100, 200]
+                    for dz in [-100, 0, 100]
+                ]
+                steps = 10
+                self._hv_paths = [[
+                    [pp[0] + (tp[0] - pp[0]) * i / steps,
+                     pp[1] + (tp[1] - pp[1]) * i / steps,
+                     pp[2] + (tp[2] - pp[2]) * i / steps]
+                    for i in range(steps + 1)
+                ]]
+                log.debug(f"HV: fallback path (no bridge) to ({tp[0]:.0f},{tp[1]:.0f},{tp[2]:.0f})")
         except Exception:
             pass
 
@@ -1411,7 +1433,11 @@ class Overlay(QWidget):
         tp_vk = vk_from_name(self.config.teleport_collectible_key)
         tp_down = bool(ctypes.windll.user32.GetAsyncKeyState(tp_vk) & 0x8000)
         if tp_down and not self._tp_key_state:
-            self.esp.teleport_collectible(self.config.teleport_collectible_key)
+            now = time.time()
+            last = getattr(self, '_last_tp_time', 0.0)
+            if now - last > 1.0 and self._hv_bridge_ok:
+                self._last_tp_time = now
+                self.esp.teleport_collectible(self.config.teleport_collectible_key)
         self._tp_key_state = tp_down
         if self.config.player_mod_enabled and not self._player_mod_active:
             self.esp.player_mod(self.config.player_speed_mult, self.config.player_jump_mult)
@@ -1659,12 +1685,17 @@ class Overlay(QWidget):
                 painter.setPen(QPen(QColor(150, 255, 150)))
                 painter.drawText(w - 200, 60, _tr("Items: {count}", count=actor_count))
 
-        non_local = [p for p in all_players if not p["is_local"]]
-        status = f"Players: {len(non_local)} | {'Attached' if self.esp else 'Waiting...'}"
+        non_local = [p for p in all_players if not p.get("is_local", False)]
+        status_parts = []
+        status_parts.append(_tr("Players: {count}", count=len(non_local)))
+        if self.esp:
+            status_parts.append(_tr("Attached"))
+        else:
+            status_parts.append(_tr("Waiting..."))
         if self._hv_bridge_ok:
-            status += " | HV:ON"
+            status_parts.append("HV:ON")
         painter.setPen(QPen(QColor(255, 255, 255)))
-        painter.drawText(10, 20, status)
+        painter.drawText(10, 20, " | ".join(status_parts))
 
         # HyperVision overlay (primary — always drawn regardless of bridge)
         if self.config.hypervision_enabled and cam:

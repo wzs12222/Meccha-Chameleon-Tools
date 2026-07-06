@@ -692,7 +692,7 @@ class MecchaESP:
                 continue
 
     def scan_terrain(self, center=None, range_xy=5000.0, z_samples=3, z_range=1000.0):
-        """Scan all actors with non-zero bounds for radar wall outlines."""
+        """Scan all UObjects with non-zero bounds for radar wall outlines."""
         segments = []
         if center is None:
             cam = self.get_camera()
@@ -706,43 +706,32 @@ class MecchaESP:
         count = 0
         t0 = time.time()
         for obj in self.objects.iter_objects():
-            if count >= 2000:
+            if count >= 5000:
                 break
             try:
                 cls_name = self.objects.class_name(obj)
                 if not cls_name or cls_name.startswith("Default__"):
                     continue
-                skip_classes = ("Pawn", "Character", "Player", "Controller", "AIController",
-                                "HUD", "Camera", "SpringArm", "PostProcess", "Light", "Fog",
-                                "Sky", "Particle", "Niagara", "Sound", "Widget", "TextRender")
-                if any(x in cls_name for x in skip_classes):
-                    continue
                 root = rp(self.pm, obj + self.offsets.get("AActor::RootComponent", 0))
                 if not root:
                     continue
-                pos = rvec3(self.pm, root + self.offsets.get("USceneComponent::RelativeLocation", 0))
-                if pos is None:
+                ox = rfloat(self.pm, root + 0x120)
+                oy = rfloat(self.pm, root + 0x124)
+                oz = rfloat(self.pm, root + 0x128)
+                if abs(ox) < 1 and abs(oy) < 1 and abs(oz) < 1:
                     continue
-                ox, oy, oz = pos
                 if abs(ox - center[0]) > half or abs(oy - center[1]) > half:
                     continue
-                bounds_addr = root + 0x140
-                try:
-                    be_x = abs(rfloat(self.pm, bounds_addr + 0x18))
-                    be_y = abs(rfloat(self.pm, bounds_addr + 0x1C))
-                    be_z = abs(rfloat(self.pm, bounds_addr + 0x20))
-                except Exception:
-                    continue
-                if max(be_x, be_y, be_z) < 15:
+                be_x = abs(rfloat(self.pm, root + 0x158))
+                be_y = abs(rfloat(self.pm, root + 0x15C))
+                be_z = abs(rfloat(self.pm, root + 0x160))
+                if max(be_x, be_y, be_z) < 10:
                     continue
                 for zi in range(z_samples):
                     test_z = z_min + zi * z_step
                     x1, y1 = ox - be_x, oy - be_y
                     x2, y2 = ox + be_x, oy + be_y
-                    segments.append((x1, y1, x2, y1, "wall", test_z))
-                    segments.append((x2, y1, x2, y2, "wall", test_z))
-                    segments.append((x2, y2, x1, y2, "wall", test_z))
-                    segments.append((x1, y2, x1, y1, "wall", test_z))
+                    segments.append((x1, y1, x2, y2, "wall", test_z))
                 count += 1
             except Exception:
                 continue
