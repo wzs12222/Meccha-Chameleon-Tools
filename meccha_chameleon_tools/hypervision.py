@@ -102,6 +102,14 @@ def bg_stop_hv():
     _bg(lambda: _send("stop_hypervision", timeout=10))
 
 
+def bg_ensure_bridge():
+    """Auto-inject bridge DLL if game is running but bridge isn't alive."""
+    def _w():
+        from meccha_chameleon_tools.camouflage import ensure_bridge_ready
+        ensure_bridge_ready()
+    _bg(_w)
+
+
 def simplify_segments(segments: List[Tuple]) -> List[Tuple]:
     by_level = {}
     for s in segments:

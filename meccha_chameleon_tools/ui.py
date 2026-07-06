@@ -26,7 +26,7 @@ from meccha_chameleon_tools.translations import _tr, LANGUAGE_NAMES
 from meccha_chameleon_tools.camouflage import ensure_bridge_ready, paint_now, stop_paint, is_bridge_alive
 from meccha_chameleon_tools.hypervision import (ping_fast, bg_scan_terrain, bg_visibility_scan,
                                                   bg_path_find, bg_start_hv, bg_update_hv, bg_stop_hv,
-                                                  simplify_segments)
+                                                  bg_ensure_bridge, simplify_segments)
 
 
 # ---------------------------------------------------------------------------
@@ -44,28 +44,35 @@ def rotation_to_axes(rot):
 
 
 def w2s(world_pos, camera, screen_w, screen_h):
-    """Project world pos to screen. Returns None if behind or outside frustum."""
-    cam_loc = camera["loc"]
-    cam_rot = camera["rot"]
-    fov = camera["fov"]
-    forward, right, up = rotation_to_axes(cam_rot)
-    dx = world_pos[0] - cam_loc[0]
-    dy = world_pos[1] - cam_loc[1]
-    dz = world_pos[2] - cam_loc[2]
-    view_x = dx * forward[0] + dy * forward[1] + dz * forward[2]
-    view_y = dx * right[0] + dy * right[1] + dz * right[2]
-    view_z = dx * up[0] + dy * up[1] + dz * up[2]
-    if view_x <= 0.1:
+    """Project world pos to screen. Returns None if behind/outside/invalid."""
+    try:
+        cam_loc, cam_rot = camera["loc"], camera["rot"]
+        fov = camera.get("fov", 90)
+        if fov <= 0 or fov > 180:
+            return None
+        forward, right, up = rotation_to_axes(cam_rot)
+        dx = world_pos[0] - cam_loc[0]
+        dy = world_pos[1] - cam_loc[1]
+        dz = world_pos[2] - cam_loc[2]
+        if not (math.isfinite(dx) and math.isfinite(dy) and math.isfinite(dz)):
+            return None
+        view_x = dx * forward[0] + dy * forward[1] + dz * forward[2]
+        view_y = dx * right[0] + dy * right[1] + dz * right[2]
+        view_z = dx * up[0] + dy * up[1] + dz * up[2]
+        if view_x <= 0.1:
+            return None
+        tan_hfov = math.tan(math.radians(fov) / 2.0)
+        if tan_hfov <= 0.001:
+            return None
+        ndc_x = view_y / (view_x * tan_hfov)
+        ndc_y = view_z / (view_x * tan_hfov / (screen_w / max(1, screen_h)))
+        if abs(ndc_x) > 1.5 or abs(ndc_y) > 1.5:
+            return None
+        sx = (1.0 + ndc_x) * screen_w / 2.0
+        sy = (1.0 - ndc_y) * screen_h / 2.0
+        return (sx, sy) if math.isfinite(sx) and math.isfinite(sy) else None
+    except Exception:
         return None
-    aspect = screen_w / screen_h
-    tan_hfov = math.tan(math.radians(fov) / 2.0)
-    ndc_x = view_y / (view_x * tan_hfov)
-    ndc_y = view_z / (view_x * tan_hfov / aspect)
-    if abs(ndc_x) > 1.5 or abs(ndc_y) > 1.5:
-        return None
-    screen_x = (1.0 + ndc_x) * screen_w / 2.0
-    screen_y = (1.0 - ndc_y) * screen_h / 2.0
-    return (screen_x, screen_y)
 
 
 def clamp_screen(x, y, w, h, margin=10):
@@ -288,37 +295,39 @@ def draw_radar(painter, cam, local_pos, players, radar_cx, radar_cy, radar_size,
     painter.setPen(Qt.NoPen)
     painter.setBrush(QColor(0, 255, 0, 220))
     painter.drawEllipse(int(radar_cx - 2), int(radar_cy - 2), 5, 5)
-    # Draw terrain segments (wall outlines)
-    if terrain_segments and current_z is not None:
+    # Draw terrain segments (wall outlines) with NaN/inf guard
+    if terrain_segments and current_z is not None and radar_range > 0:
         cam_yaw_rad = math.radians(cam["rot"][1])
-        cam_sin = math.sin(cam_yaw_rad)
-        cam_cos = math.cos(cam_yaw_rad)
         for seg in terrain_segments:
-            x1, y1, x2, y2, stype, sz = seg[:6]
-            if abs(sz - current_z) > 200:
+            try:
+                x1, y1, x2, y2, stype, sz = seg[:6]
+                if abs(sz - current_z) > 200:
+                    continue
+                dx1, dy1 = x1 - local_pos[0], y1 - local_pos[2]
+                dx2, dy2 = x2 - local_pos[0], y2 - local_pos[2]
+                d1 = math.hypot(dx1, dy1)
+                d2 = math.hypot(dx2, dy2)
+                if d1 > radar_range or d2 > radar_range or d1 < 1 or d2 < 1:
+                    continue
+                a1 = math.atan2(dx1, dy1) - cam_yaw_rad
+                a2 = math.atan2(dx2, dy2) - cam_yaw_rad
+                r1 = (d1 / radar_range) * (half - 8)
+                r2 = (d2 / radar_range) * (half - 8)
+                sx1 = radar_cx + r1 * math.sin(a1)
+                sy1 = radar_cy - r1 * math.cos(a1)
+                sx2 = radar_cx + r2 * math.sin(a2)
+                sy2 = radar_cy - r2 * math.cos(a2)
+                if not (math.isfinite(sx1) and math.isfinite(sy1) and math.isfinite(sx2) and math.isfinite(sy2)):
+                    continue
+                if stype == "wall":
+                    painter.setPen(QPen(QColor(180, 180, 200, 150), 1))
+                elif stype == "overhang":
+                    painter.setPen(QPen(QColor(120, 80, 80, 100), 1, Qt.DashLine))
+                else:
+                    painter.setPen(QPen(QColor(140, 140, 160, 120), 1))
+                painter.drawLine(int(sx1), int(sy1), int(sx2), int(sy2))
+            except Exception:
                 continue
-            # World to radar coords
-            dx1, dy1 = x1 - local_pos[0], y1 - local_pos[2]
-            dx2, dy2 = x2 - local_pos[0], y2 - local_pos[2]
-            d1 = math.sqrt(dx1*dx1 + dy1*dy1)
-            d2 = math.sqrt(dx2*dx2 + dy2*dy2)
-            if d1 > radar_range or d2 > radar_range:
-                continue
-            a1 = math.atan2(dx1, dy1) - cam_yaw_rad
-            a2 = math.atan2(dx2, dy2) - cam_yaw_rad
-            r1 = (d1 / radar_range) * (half - 8)
-            r2 = (d2 / radar_range) * (half - 8)
-            sx1 = radar_cx + r1 * math.sin(a1)
-            sy1 = radar_cy - r1 * math.cos(a1)
-            sx2 = radar_cx + r2 * math.sin(a2)
-            sy2 = radar_cy - r2 * math.cos(a2)
-            if stype == "wall":
-                painter.setPen(QPen(QColor(180, 180, 200, 150), 1))
-            elif stype == "overhang":
-                painter.setPen(QPen(QColor(120, 80, 80, 100), 1, Qt.DashLine))
-            else:
-                painter.setPen(QPen(QColor(140, 140, 160, 120), 1))
-            painter.drawLine(int(sx1), int(sy1), int(sx2), int(sy2))
 
     cam_yaw = math.radians(cam["rot"][1])
     for p in players:
@@ -1263,8 +1272,11 @@ class Overlay(QWidget):
             if not players:
                 return
 
-            # Cache bridge status
+            # Cache bridge status; auto-inject if HV enabled but bridge dead
             self._hv_bridge_ok = ping_fast()
+            if not self._hv_bridge_ok and self.esp is not None:
+                bg_ensure_bridge()
+                # Don't assume it's alive yet — next tick will check
 
             enemies = [p for p in players if not p.get("is_local", True) and p.get("is_enemy", False)]
             if not enemies:
