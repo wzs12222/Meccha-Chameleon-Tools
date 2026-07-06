@@ -138,7 +138,8 @@ Camouflage     → TCP bridge client + injector (in development)
 ## Changelog
 
 ### v1.8.2-wow — WIP Fusion Release (wzs12222)
-- **Team-based colors** — Green(self) / Yellow(teammate) / Red(enemy) / Blue(unknown)
+- **Three color modes** — Team (enemy/ally), Role (hunter/survivor), Hybrid (both via outlined dots + alternating snap lines)
+- **Hybrid mode**: dot fill = team, dot outline = role; snap lines alternate between team color and role color
 - **Background reader thread** — 10 reads/sec, eliminates render stutter
 - **Auto-attach** — tool starts without game, attaches every 2s
 - **Observer mode** — camera proximity detection for spectate targets
