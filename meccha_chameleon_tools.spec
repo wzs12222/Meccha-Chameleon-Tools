@@ -1,0 +1,42 @@
+# -*- mode: python ; coding: utf-8 -*-
+import sys
+from pathlib import Path
+
+pkg = "meccha_chameleon_tools"
+a = Analysis(
+    [f"{pkg}/__init__.py"],
+    pathex=[],
+    datas=[
+        (f"{pkg}/runtime-bridge.dll", pkg),
+        (f"{pkg}/runtime-injector.exe", pkg),
+        (f"{pkg}/translations.py", pkg),
+        (f"{pkg}/camouflage.py", pkg),
+        (f"{pkg}/config.py", pkg),
+        (f"{pkg}/core.py", pkg),
+        (f"{pkg}/ui.py", pkg),
+        (f"{pkg}/camo_entry.py", pkg),
+    ],
+    hiddenimports=[
+        "PyQt5", "PyQt5.QtCore", "PyQt5.QtGui", "PyQt5.QtWidgets",
+        "pymem", "win32gui",
+    ],
+    excludes=["tkinter", "matplotlib", "numpy", "PIL", "pandas", "scipy", "notebook"],
+    noarchive=False,
+)
+
+pyz = PYZ(a.pure)
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    a.binaries,
+    a.datas,
+    [],
+    name="MecchaChameleonTools",
+    debug=False,
+    strip=False,
+    upx=True,
+    console=False,
+    disable_windowed_traceback=False,
+    icon=None,
+)
