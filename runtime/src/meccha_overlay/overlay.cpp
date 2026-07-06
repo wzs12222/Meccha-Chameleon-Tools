@@ -413,14 +413,37 @@ static void read_game_data() {
     if(!cam.valid&&!g_cam.valid) return;
     if(!cam.valid) return;
 
+    // Resolve offsets for player identity
+    static int32_t off_rc=mc_get_offset("RootComponent");
+    static int32_t off_rl=mc_get_offset("RelativeLocation");
+    static int32_t off_aps=-1, off_pstate=-1, off_ackpawn=-1, off_pc=-1;
+    static int32_t off_gi=-1, off_lp=-1, off_pp=-1;
+    static bool off_init=false;
+    if(!off_init) {
+        off_rc=mc_get_offset("RootComponent"); off_rl=mc_get_offset("RelativeLocation");
+        off_aps=mc_resolve_offset("Actor","PlayerState");
+        off_pstate=mc_resolve_offset("Controller","PlayerState");
+        off_ackpawn=mc_resolve_offset("PlayerController","AcknowledgedPawn");
+        off_pc=mc_get_offset("PlayerController");
+        off_gi=mc_get_offset("OwningGameInstance"); off_lp=mc_get_offset("LocalPlayers");
+        off_pp=mc_resolve_offset("PlayerState","PawnPrivate");
+        off_init=true;
+    }
+
+    // Get local pawn via PC -> AcknowledgedPawn
+    uint64_t local_pawn=0;
+    uint64_t world=mc_get_world();
+    if(world&&off_gi>=0&&off_lp>=0) {
+        uint64_t gi=mc_read_ptr(world+off_gi);
+        if(gi) { uint64_t la=mc_read_ptr(gi+off_lp); if(la) { uint64_t lp=mc_read_ptr(la);
+            if(lp&&off_pc>=0) { uint64_t lpc=mc_read_ptr(lp+off_pc);
+                if(lpc&&off_ackpawn>=0) local_pawn=mc_read_ptr(lpc+off_ackpawn);
+    }}}}
+
     g_players.clear();
     uint64_t buf[64];
     int n=mc_read_players(buf,64);
     if(n<=0) return;
-
-    int32_t off_rc=mc_get_offset("RootComponent");
-    int32_t off_rl=mc_get_offset("RelativeLocation");
-    int32_t off_ps=0, off_pawn=0;
 
     for(int i=0;i<n;i++) {
         PlayerData p={}; p.actor=buf[i];
@@ -434,11 +457,27 @@ static void read_game_data() {
         p.health=mc_player_get_health(buf[i],0);
         p.shield=mc_read_float(buf[i]+0x140);
         p.invincible=mc_player_get_invincible(buf[i])&&g_cfg.invincible_detect;
-        p.role=mc_player_get_role(buf[i]);
+
+        // Read PlayerState properly for role detection
+        uint64_t player_state=(off_aps>=0)?mc_read_ptr(buf[i]+off_aps):0;
+        if(!player_state&&off_pstate>=0) {
+            // Try via Controller -> PlayerState
+            for(uint32_t j=0;j<(uint32_t)mc_uobject_count()&&!player_state;j++){
+                uint64_t obj=mc_uobject_get(j); if(!obj) continue;
+                char cn[64]; if(mc_uobject_class_name(obj,cn,64)==0) continue;
+                if(strcmp(cn,"PlayerController")==0||strcmp(cn,"BP_PlayerController_C")==0||
+                   strstr(cn,"PlayerController")){
+                    uint64_t ps=mc_read_ptr(obj+off_pstate);
+                    if(ps&&off_pp>=0){uint64_t pawn=mc_read_ptr(ps+off_pp); if(pawn==buf[i]){player_state=ps;break;}}
+                }
+            }
+        }
+        p.role=mc_player_get_role(player_state);
         p.is_hunter=(p.role==1); p.is_survivor=(p.role==2);
-        // Determine is_local via PlayerController comparison
-        p.is_local=(i==0); // simplified
-        p.is_enemy=(i>0);
+
+        // Proper local/enemy identification
+        p.is_local=(buf[i]==local_pawn);
+        p.is_enemy=!p.is_local;
         if(p.health<0.01f) continue;
         p.dist=(float)sqrt(pow(p.pos[0]-g_cam.loc[0],2)+pow(p.pos[1]-g_cam.loc[1],2)+pow(p.pos[2]-g_cam.loc[2],2));
         g_players.push_back(p);
