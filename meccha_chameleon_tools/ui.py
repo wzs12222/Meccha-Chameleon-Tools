@@ -11,9 +11,10 @@ from PyQt5.QtWidgets import (
     QApplication, QWidget, QCheckBox, QComboBox, QLabel,
     QVBoxLayout, QHBoxLayout, QPushButton, QFrame,
     QSpinBox, QDoubleSpinBox, QSlider, QListWidget, QStackedWidget,
+    QSystemTrayIcon, QMenu, QMessageBox,
 )
 from PyQt5.QtCore import Qt, QTimer, QObject, pyqtSignal
-from PyQt5.QtGui import QPainter, QPen, QColor, QFont, QBrush, QPolygonF
+from PyQt5.QtGui import QPainter, QPen, QColor, QFont, QBrush, QPolygonF, QPixmap, QIcon, QPainter as QPixPainter
 from PyQt5.QtCore import QPointF
 
 from meccha_chameleon_tools.core import (
@@ -389,9 +390,32 @@ class Menu(QWidget):
         self._outer_layout.setContentsMargins(0, 0, 0, 0)
         self._build_ui()
         self.setFixedSize(520, 600)
+        self._setup_tray()
 
     def _close_app(self):
         QApplication.quit()
+
+    def _setup_tray(self):
+        pix = QPixmap(16, 16)
+        pix.fill(Qt.transparent)
+        pp = QPixPainter(pix)
+        pp.setBrush(QColor(0, 180, 255))
+        pp.setPen(Qt.NoPen)
+        pp.drawEllipse(1, 1, 14, 14)
+        pp.end()
+        self.tray_icon = QSystemTrayIcon(QIcon(pix), self)
+        self.tray_icon.setToolTip("Meccha Camouflage")
+        tray_menu = QMenu()
+        act_toggle = tray_menu.addAction("Show/Hide Menu")
+        act_toggle.triggered.connect(lambda: self.setVisible(not self.isVisible()))
+        tray_menu.addSeparator()
+        act_quit = tray_menu.addAction("Quit")
+        act_quit.triggered.connect(QApplication.quit)
+        self.tray_icon.setContextMenu(tray_menu)
+        self.tray_icon.activated.connect(lambda reason: (
+            self.setVisible(not self.isVisible()) if reason == QSystemTrayIcon.DoubleClick else None
+        ))
+        self.tray_icon.show()
 
     def _switch_language(self, lang_code):
         self.config.language = lang_code
@@ -686,7 +710,7 @@ class Menu(QWidget):
         cr = QHBoxLayout()
         cr.addWidget(QLabel(_tr("Color Mode:")))
         self.cmb_color_mode = QComboBox()
-        cm_labels = {"team": "Team (enemy/ally)", "role": "Role (hunter/survivor)", "hybrid": "Hybrid (ring+alt)"}
+        cm_labels = {"team": _tr("Team (enemy/ally)"), "role": _tr("Role (hunter/survivor)"), "hybrid": _tr("Hybrid (ring+alt)")}
         self.cmb_color_mode.addItems(list(cm_labels.values()))
         cm_codes = list(cm_labels.keys())
         self.cmb_color_mode.setCurrentIndex(cm_codes.index(self.config.color_mode) if self.config.color_mode in cm_codes else 2)
@@ -1023,8 +1047,8 @@ class Menu(QWidget):
         lo.addWidget(QLabel(_tr("Hide by category:")))
         cm = self.config.color_mode
         if cm == "role":
-            pairs = [("filter_hide_enemy", "Hunter (Red)"), ("filter_hide_self", _tr("Green (Self)")),
-                     ("filter_hide_teammate", "Survivor (Blue)"), ("filter_hide_unknown", "Unknown")]
+            pairs = [("filter_hide_enemy", _tr("Hunter (Red)")), ("filter_hide_self", _tr("Green (Self)")),
+                     ("filter_hide_teammate", _tr("Survivor (Blue)")), ("filter_hide_unknown", _tr("Unknown"))]
         else:
             pairs = [("filter_hide_enemy", _tr("Red (Enemy)")), ("filter_hide_self", _tr("Green (Self)")),
                      ("filter_hide_teammate", _tr("Yellow (Teammate)")), ("filter_hide_unknown", _tr("Blue (Unknown)"))]

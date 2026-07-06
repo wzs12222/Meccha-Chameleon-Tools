@@ -158,6 +158,17 @@ _TR = {
     "Waiting for game...": {"CN": "\u7b49\u5f85\u6e38\u620f\u542f\u52a8..."},
     "Teammate {idx}": {"CN": "\u961f\u53cb {idx}"},
     "Color Mode:": {"CN": "\u989c\u8272\u6a21\u5f0f:"},
+    "Team (enemy/ally)": {"CN": "\u9635\u8425\uff08\u654c/\u53cb\uff09"},
+    "Role (hunter/survivor)": {"CN": "\u89d2\u8272\uff08\u730e\u4eba/\u5e78\u5b58\u8005\uff09"},
+    "Hybrid (ring+alt)": {"CN": "\u6df7\u5408\uff08\u63cf\u8fb9+\u4ea4\u66ff\uff09"},
+    "Hunter (Red)": {"CN": "\u730e\u4eba\uff08\u7ea2\u8272\uff09"},
+    "Survivor (Blue)": {"CN": "\u5e78\u5b58\u8005\uff08\u84dd\u8272\uff09"},
+    "Unknown": {"CN": "\u672a\u77e5"},
+    "[INV]": {"CN": "[\u65e0\u654c]"},
+    "Show/Hide Menu": {"CN": "\u663e\u793a/\u9690\u85cf\u83dc\u5355"},
+    "Quit": {"CN": "\u9000\u51fa"},
+    "Already Running": {"CN": "\u5df2\u5728\u8fd0\u884c"},
+    "MecchaCamouflage is already running.\nOnly one instance is allowed.": {"CN": "MecchaCamouflage \u5df2\u5728\u8fd0\u884c\u3002\n\u53ea\u5141\u8bb8\u542f\u52a8\u4e00\u4e2a\u5b9e\u4f8b\u3002"},
 }
 
 

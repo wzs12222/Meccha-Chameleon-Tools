@@ -52,7 +52,17 @@ def _set_dpi_aware():
             pass
 
 
+def _check_single_instance():
+    mutex = ctypes.windll.kernel32.CreateMutexW(None, False, "MecchaCamouflage-Instance")
+    if ctypes.windll.kernel32.GetLastError() == 183:
+        from PyQt5.QtWidgets import QMessageBox
+        QMessageBox.warning(None, "Already Running",
+            "MecchaCamouflage is already running.\nOnly one instance is allowed.")
+        sys.exit(1)
+
+
 def main():
+    _check_single_instance()
     _set_dpi_aware()
     app = QApplication(sys.argv)
 
