@@ -628,10 +628,10 @@ static void hv_worker_loop()
         try { ctx = sdk_resolve_context(ref); }
         catch (...) { continue; }
         try { hv_scan_find_debug_fns(ref); } catch (...) {}
-        if (!g_hv_fns.ok || !ctx.world) continue;
+        std::uintptr_t world_ptr = ctx.world;
 
-        // Re-scan every 2s (tick 4 = 2000ms)
-        if (tick % 4 == 1)
+        // Re-scan every 2s (use fresh ref/ctx; failure keeps old data)
+        if (tick % 4 == 1 && g_hv_fns.ok && world_ptr)
         {
             double tx, ty, tz, px, py, pz;
             int q;
@@ -644,38 +644,40 @@ static void hv_worker_loop()
             hv_do_scan(ref, ctx, tx, ty, tz, px, py, pz, q);
         }
 
-        // Read current state for drawing
+        // Read current state for drawing (draw even if has_data is false — just old data)
         std::vector<std::tuple<double,double,double>> cloud;
         std::vector<std::vector<std::tuple<double,double,double>>> paths;
         double tx, ty, tz, px, py, pz;
+        bool can_draw = false;
         {
             std::lock_guard<std::mutex> lk(g_hv3d.mtx);
-            if (!g_hv3d.has_data) continue;
+            can_draw = g_hv3d.has_data;
             cloud = g_hv3d.exposure_pts;
             paths = g_hv3d.paths;
             tx = g_hv3d.target_x; ty = g_hv3d.target_y; tz = g_hv3d.target_z;
             px = g_hv3d.player_x; py = g_hv3d.player_y; pz = g_hv3d.player_z;
         }
+        if (!can_draw || !g_hv_fns.ok || !world_ptr) continue;
 
         // Draw
-        hv_flush_debug(ctx.world);
+        hv_flush_debug(world_ptr);
         for (auto& pt : cloud)
-            hv_draw_sphere(ref, ctx.world, std::get<0>(pt), std::get<1>(pt), std::get<2>(pt), 30.0f, 0.0f, 1.0f, 0.3f);
+            hv_draw_sphere(ref, world_ptr, std::get<0>(pt), std::get<1>(pt), std::get<2>(pt), 30.0f, 0.0f, 1.0f, 0.3f);
         for (auto& path : paths)
         {
             for (size_t i = 1; i < path.size(); ++i)
             {
                 auto& a = path[i-1]; auto& b = path[i];
-                hv_draw_line(ref, ctx.world, std::get<0>(a), std::get<1>(a), std::get<2>(a),
+                hv_draw_line(ref, world_ptr, std::get<0>(a), std::get<1>(a), std::get<2>(a),
                              std::get<0>(b), std::get<1>(b), std::get<2>(b), 0.0f, 1.0f, 0.2f, 3.0f);
             }
             if (!path.empty())
             {
                 auto& last = path.back();
-                hv_draw_sphere(ref, ctx.world, std::get<0>(last), std::get<1>(last), std::get<2>(last), 50.0f, 0.0f, 1.0f, 0.5f);
+                hv_draw_sphere(ref, world_ptr, std::get<0>(last), std::get<1>(last), std::get<2>(last), 50.0f, 0.0f, 1.0f, 0.5f);
             }
         }
-        hv_draw_sphere(ref, ctx.world, tx, ty, tz, 40.0f, 1.0f, 0.0f, 0.0f);
+        hv_draw_sphere(ref, world_ptr, tx, ty, tz, 40.0f, 1.0f, 0.0f, 0.0f);
         if (!paths.empty() && !paths[0].empty())
         {
             auto& first = paths[0][0];

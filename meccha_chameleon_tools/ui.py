@@ -1189,10 +1189,10 @@ class Overlay(QWidget):
         self._hv_timer.timeout.connect(self._hv_tick)
         self._hv_timer.start(500)
 
-        # Terrain refresh timer
+        # Terrain refresh timer (also triggers immediate first draw)
+        self._terrain_immediate = True
         self._terrain_timer = QTimer(self)
-        self._terrain_timer.timeout.connect(self._tick_terrain)
-        self._terrain_timer.start(30000)
+        self._terrain_timer.timeout.connect(lambda: self._tick_terrain(force=False))
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._tick_overlay)
@@ -1229,16 +1229,15 @@ class Overlay(QWidget):
         except Exception:
             self.setGeometry(0, 0, 1920, 1080)
 
-    def _tick_terrain(self):
-        """Refresh terrain from Python fallback or bridge, runs in timer."""
+    def _tick_terrain(self, force=False):
+        """Refresh terrain. force=True for immediate first draw."""
         if not self.esp or not self.config.radar_terrain:
             return
         now = time.time()
-        if now - self._last_terrain_time < 30:
+        if not force and now - self._last_terrain_time < 30:
             return
         self._last_terrain_time = now
         try:
-            # Python fallback (always available)
             segs = self.esp.scan_terrain()
             if segs:
                 self._terrain_cache = simplify_segments(segs)
@@ -1246,7 +1245,13 @@ class Overlay(QWidget):
             pass
 
     def _hv_tick(self):
-        """Non-blocking HV tick — all TCP is fire-and-forget."""
+        """Non-blocking tick — all TCP is fire-and-forget + immediate terrain."""
+        # Immediate first terrain draw
+        if self.config.radar_terrain and self._terrain_immediate and self.esp:
+            self._terrain_immediate = False
+            self._tick_terrain(force=True)
+            self._terrain_timer.start(30000)
+
         if not self.esp or not self.config.hypervision_enabled:
             return
         try:
