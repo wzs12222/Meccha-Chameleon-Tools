@@ -437,7 +437,7 @@ class Menu(QWidget):
         outer.setContentsMargins(12, 8, 12, 8)
         outer.setSpacing(6)
 
-        title = QLabel(_tr("MECCA CHAMELEON TOOLS"))
+        title = QLabel(_tr("MECCA CHAMELION TOOLS"))
         title.setObjectName("titleLbl")
         title.setAlignment(Qt.AlignCenter)
         outer.addWidget(title)

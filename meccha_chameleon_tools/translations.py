@@ -9,8 +9,8 @@ LANGUAGE_NAMES = {
 }
 
 _TR = {
-    "MECCA CHAMELEON TOOLS": {
-        "DE": "MECCA CHAMELEON TOOLS", "FR": "MECCA CHAMELEON TOOLS", "ES": "MECCA CHAMELEON TOOLS",
+    "MECCA CHAMELION TOOLS": {
+        "DE": "MECCA CHAMELION TOOLS", "FR": "MECCA CHAMELION TOOLS", "ES": "MECCA CHAMELION TOOLS",
         "CN": "\u8ff7\u5f69\u53d8\u8272\u9f99\u5de5\u5177", "JP": "\u30e1\u30ab\u30ab\u30e1\u30ec\u30aa\u30f3\u30c4\u30fc\u30eb", "KR": "\ubbf8\uce74\uce74\uba54\ub808\uc628 \ub3c4\uad6c",
     },
     "ESP": {"DE": "ESP", "FR": "ESP", "ES": "ESP", "CN": "ESP", "JP": "ESP", "KR": "ESP"},

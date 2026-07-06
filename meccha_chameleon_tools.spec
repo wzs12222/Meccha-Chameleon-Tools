@@ -32,7 +32,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name="MecchaChameleonTools",
+    name="MecchaCamouflage",
     debug=False,
     strip=False,
     upx=True,
