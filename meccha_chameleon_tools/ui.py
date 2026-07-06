@@ -90,7 +90,7 @@ def clamp_screen(x, y, w, h, margin=10):
 
 
 def w2s_snap(world_pos, camera, screen_w, screen_h):
-    """Project world pos to screen for snap lines. Works even when player is behind camera."""
+    """Project world pos to screen edge for snap lines. Works even behind camera."""
     try:
         cam_loc, cam_rot = camera["loc"], camera["rot"]
         fov = camera.get("fov", 90)
@@ -106,30 +106,40 @@ def w2s_snap(world_pos, camera, screen_w, screen_h):
         view_y = dx * right[0] + dy * right[1] + dz * right[2]
         view_z = dx * up[0] + dy * up[1] + dz * up[2]
 
-        # For snap lines: if behind camera, mirror in front to get direction, then clamp to edge
-        behind = view_x <= 0.1
-        if behind:
-            view_x = max(0.1, abs(view_x))
-
-        tan_hfov = math.tan(math.radians(fov) / 2.0)
-        if tan_hfov <= 0.001:
-            return None
-        aspect = screen_w / max(1, screen_h)
-        ndc_x = view_y / (view_x * tan_hfov)
-        ndc_y = view_z / (view_x * tan_hfov / aspect)
-
-        if behind:
-            # Clamp to screen edge, keeping direction
-            ndc_x = max(-1.0, min(1.0, ndc_x))
-            ndc_y = max(-1.0, min(1.0, ndc_y))
-        elif abs(ndc_x) > 1.5 or abs(ndc_y) > 1.5:
-            return None
-
-        sx = (1.0 + ndc_x) * screen_w / 2.0
-        sy = (1.0 - ndc_y) * screen_h / 2.0
-        if behind:
-            sx, sy = clamp_screen(sx, sy, screen_w, screen_h)
-        return (sx, sy) if math.isfinite(sx) and math.isfinite(sy) else None
+        if view_x > 0.1:
+            # Normal projection (in front of camera)
+            tan_hfov = math.tan(math.radians(fov) / 2.0)
+            if tan_hfov <= 0.001:
+                return None
+            aspect = screen_w / max(1, screen_h)
+            ndc_x = view_y / (view_x * tan_hfov)
+            ndc_y = view_z / (view_x * tan_hfov / aspect)
+            if abs(ndc_x) > 1.5 or abs(ndc_y) > 1.5:
+                return None
+            sx = (1.0 + ndc_x) * screen_w / 2.0
+            sy = (1.0 - ndc_y) * screen_h / 2.0
+            return (sx, sy) if math.isfinite(sx) and math.isfinite(sy) else None
+        else:
+            # Behind camera: use vy/vz as 2D screen direction from center to edge
+            eps = 0.001
+            mag = math.hypot(view_y, view_z)
+            if mag < eps:
+                return None
+            # Extend direction to screen boundary
+            cx, cy_ = screen_w / 2.0, screen_h / 2.0
+            # The direction (view_y, view_z) in view space maps to screen direction
+            # vy → right (+X), vz → up (-Y, since screen Y is inverted)
+            dx_s = view_y / mag
+            dy_s = -view_z / mag
+            if abs(dx_s) > abs(dy_s):
+                t = (screen_w / 2 - 5) / max(eps, abs(dx_s))
+            else:
+                t = (screen_h / 2 - 5) / max(eps, abs(dy_s))
+            sx = cx + dx_s * t
+            sy = cy_ + dy_s * t
+            sx = max(5, min(screen_w - 5, sx))
+            sy = max(5, min(screen_h - 5, sy))
+            return (sx, sy)
     except Exception:
         return None
 
