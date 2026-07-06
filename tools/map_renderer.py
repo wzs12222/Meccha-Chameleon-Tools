@@ -100,8 +100,7 @@ def fetch_via_bridge():
 
 def fetch_via_python():
     from meccha_chameleon_tools.core import MecchaESP
-    from meccha_chameleon_tools.hypervision import simplify_segments
-    import sys
+        import sys
     print("[*] Python pymem fallback...", flush=True)
     try:
         esp = MecchaESP()
@@ -122,8 +121,7 @@ def fetch_via_python():
         print(f"  Found {match_count} matching classes", flush=True)
         segs = esp.scan_terrain()
         if segs:
-            segs = simplify_segments(segs)
-            print(f"[+] Python returns {len(segs)} segs", flush=True)
+            print(f"[+] Python returns {len(segs)} points", flush=True)
             return segs
         print("[!] Python scan returned 0 segments", flush=True)
     except Exception as e:
