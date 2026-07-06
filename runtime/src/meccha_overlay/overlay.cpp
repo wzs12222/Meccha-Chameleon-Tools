@@ -251,6 +251,7 @@ static bool init_d2d(HWND hwnd) {
 struct PlayerData {
     uint64_t actor, player_state;
     double pos[3], head[3];
+    float yaw; // degrees, for box rotation
     float health, shield;
     bool  invincible, is_local, is_enemy, is_hunter, is_survivor, is_unknown;
     int   role; // 0=unknown 1=hunter 2=survivor
@@ -295,10 +296,23 @@ static void read_game_data() {
     for (int32_t i = 0; i < n; i++) {
         PlayerData p = {};
         p.actor = buf[i];
-        float pf[3];
-        if (!mc_read_vec3_f(buf[i] + 0x128, pf)) continue;
-        p.pos[0]=pf[0]; p.pos[1]=pf[1]; p.pos[2]=pf[2];
-        p.head[0]=pf[0]; p.head[1]=pf[1]; p.head[2]=pf[2]+80;
+        // Read position: actor -> RootComponent -> RelativeLocation
+        uint64_t root = mc_read_ptr(buf[i] + 0x130); // AActor::RootComponent
+        if (!root) continue;
+        double pd[3];
+        if (!mc_read_vec3(root + 0x11C, pd) && !mc_read_vec3_f(root + 0x11C, (float*)pd)) continue; // double then float
+        // Try double first, fallback to float
+        if (!mc_read_vec3(root + 0x11C, pd)) {
+            float pf[3];
+            if (!mc_read_vec3_f(root + 0x11C, pf)) continue;
+            pd[0]=pf[0]; pd[1]=pf[1]; pd[2]=pf[2];
+        }
+        p.pos[0]=pd[0]; p.pos[1]=pd[1]; p.pos[2]=pd[2];
+        // Read rotation (FRotator: pitch, yaw, roll)
+        float rot_f[3]={};
+        mc_read_vec3_f(root + 0x128, rot_f);
+        p.yaw = rot_f[1]; // yaw
+        p.head[0]=pd[0]; p.head[1]=pd[1]; p.head[2]=pd[2]+80;
         p.health = mc_player_get_health(buf[i], 0);
         p.shield = mc_read_float(buf[i] + 0x140);
         p.invincible = mc_player_get_invincible(buf[i]) && g_cfg.invincible_detect;
@@ -469,21 +483,66 @@ static void ren_dot(float sx, float sy, float d, const PlayerData& p) {
     }
 }
 
+static void project_box_corners(const double pos[3], float yaw_deg, float height, float hw,
+                                  const CameraData& cam, UINT sw, UINT sh,
+                                  float& min_x, float& min_y, float& max_x, float& max_y) {
+    float yaw_rad = yaw_deg * PI / 180;
+    float cy = cosf(yaw_rad), sy = sinf(yaw_rad);
+    // 8 corners: 4 bottom, 4 top (local space)
+    float corners[8][3] = {
+        {-hw,0,-hw}, {-hw,0,hw}, {hw,0,hw}, {hw,0,-hw},
+        {-hw,height,-hw}, {-hw,height,hw}, {hw,height,hw}, {hw,height,-hw},
+    };
+    min_x = 1e9f; min_y = 1e9f; max_x = -1e9f; max_y = -1e9f;
+    int valid = 0;
+    for (auto& c : corners) {
+        float rx = c[0]*cy - c[2]*sy;
+        float rz = c[0]*sy + c[2]*cy;
+        double wp[3] = {pos[0]+rx, pos[1]+c[1], pos[2]+rz};
+        float sx, sy_;
+        if (w2s(wp, cam, sw, sh, sx, sy_)) {
+            min_x = std::min(min_x, sx); min_y = std::min(min_y, sy_);
+            max_x = std::max(max_x, sx); max_y = std::max(max_y, sy_);
+            valid++;
+        }
+    }
+    if (valid < 4) { min_x = max_x = min_y = max_y = 0; }
+}
 static void ren_box(float sx, float sy, float d, const PlayerData& p) {
+    (void)sx; (void)sy;
     float s = scl(d);
-    float h = g_cfg.box_height_world * 500.0f / std::max(100.0f, d) * s;
-    float w = h * 0.5f;
-    dr(sx, sy+g_cfg.box_y_offset, w, h, to_c(g_cfg.box_color), (float)g_cfg.line_thickness);
+    float h = g_cfg.box_height_world * s;
+    float hw = (g_cfg.box_height_world/3.0f) * s;
+    float min_x, min_y, max_x, max_y;
+    UINT sw=1920, sh=1080; RECT rc; if (GetClientRect(g_overlay, &rc)) { sw=rc.right-rc.left; sh=rc.bottom-rc.top; }
+    project_box_corners(p.pos, p.yaw, h, hw, g_cam, sw, sh, min_x, min_y, max_x, max_y);
+    if (max_x <= min_x || max_y <= min_y) return;
+    float cx = (min_x+max_x)/2, cy_ = (min_y+max_y)/2;
+    dr(cx, cy_+g_cfg.box_y_offset, (max_x-min_x)/2, (max_y-min_y)/2, final_col(p), (float)g_cfg.line_thickness);
 }
 static void ren_corner_box(float sx, float sy, float d, const PlayerData& p) {
+    (void)sx; (void)sy;
     float s = scl(d);
-    float h = 100.0f * 500.0f / std::max(100.0f, d) * s, w = h*0.5f, l=6;
-    auto col = to_c(g_cfg.box_color); float lt = (float)g_cfg.line_thickness;
-    float y = sy, xl = sx-w, xr = sx+w;
-    dl(xl, y, xl+l, y, col, lt); dl(xl, y, xl, y+l, col, lt);
-    dl(xr, y, xr-l, y, col, lt); dl(xr, y, xr, y+l, col, lt);
-    dl(xl, y+h, xl+l, y+h, col, lt); dl(xl, y+h, xl, y+h-l, col, lt);
-    dl(xr, y+h, xr-l, y+h, col, lt); dl(xr, y+h, xr, y+h-l, col, lt);
+    float h = g_cfg.box_height_world * s;
+    float hw = (g_cfg.box_height_world/3.0f) * s;
+    float min_x, min_y, max_x, max_y;
+    UINT sw=1920, sh=1080; RECT rc; if (GetClientRect(g_overlay, &rc)) { sw=rc.right-rc.left; sh=rc.bottom-rc.top; }
+    project_box_corners(p.pos, p.yaw, h, hw, g_cam, sw, sh, min_x, min_y, max_x, max_y);
+    if (max_x <= min_x || max_y <= min_y) return;
+    auto col = final_col(p);
+    float lt = (float)g_cfg.line_thickness;
+    int mx = (int)min_x, Mx = (int)max_x, my = (int)min_y, My = (int)max_y;
+    int bw = Mx-mx, bh = My-my;
+    if (bw < 2 || bh < 2) return;
+    int corner = std::max(4, (int)(std::min(bw,bh)*0.25f));
+    dl((float)mx, (float)my, (float)(mx+corner), (float)my, col, lt);
+    dl((float)mx, (float)my, (float)mx, (float)(my+corner), col, lt);
+    dl((float)(Mx-corner), (float)my, (float)Mx, (float)my, col, lt);
+    dl((float)Mx, (float)my, (float)Mx, (float)(my+corner), col, lt);
+    dl((float)mx, (float)(My-corner), (float)mx, (float)My, col, lt);
+    dl((float)mx, (float)My, (float)(mx+corner), (float)My, col, lt);
+    dl((float)(Mx-corner), (float)My, (float)Mx, (float)My, col, lt);
+    dl((float)Mx, (float)(My-corner), (float)Mx, (float)My, col, lt);
 }
 static void ren_skel(float sx, float sy, float d, const PlayerData& p) {
     float s = scl(d);
