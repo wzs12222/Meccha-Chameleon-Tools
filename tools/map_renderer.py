@@ -99,8 +99,8 @@ def fetch_via_bridge():
 
 
 def fetch_via_python():
+    import sys
     from meccha_chameleon_tools.core import MecchaESP
-        import sys
     print("[*] Python pymem fallback...", flush=True)
     try:
         esp = MecchaESP()
