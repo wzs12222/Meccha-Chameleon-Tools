@@ -99,3 +99,5 @@ demo.mp4
 # Untracked native binaries (use native/ dir instead)
 meccha_chameleon_tools/runtime-bridge.dll
 meccha_chameleon_tools/runtime-injector.exe
+meccha_chameleon_tools/meccha-core.dll
+meccha_chameleon_tools/meccha-overlay.exe
