@@ -6,6 +6,7 @@
   python tools/map_renderer.py --from-json data.json  # 从已有 JSON 渲染
 """
 import json, math, os, sys, time
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 try:
@@ -104,22 +105,11 @@ def fetch_via_python():
     print("[*] Python pymem fallback...", flush=True)
     try:
         esp = MecchaESP()
-        print("[+] Game connected, scanning terrain...", flush=True)
-        # Debug: check if any object matches the filter
-        match_count = 0
-        for obj in esp.objects.iter_objects():
-            try:
-                cls = esp.objects.class_name(obj)
-                if cls and any(v in cls for v in ("StaticMesh", "Mesh", "Building", "Wall", "Floor")):
-                    match_count += 1
-                    if match_count == 1:
-                        print(f"  Sample match: {cls}", flush=True)
-                if match_count > 100:
-                    break
-            except:
-                pass
-        print(f"  Found {match_count} matching classes", flush=True)
+        print("[+] Scanning terrain (up to 20000 objects)...", flush=True)
+        t0 = time.time()
         segs = esp.scan_terrain()
+        dt = time.time() - t0
+        print(f"[+] Scan done: {len(segs)} points in {dt:.1f}s", flush=True)
         if segs:
             print(f"[+] Python returns {len(segs)} points", flush=True)
             return segs
