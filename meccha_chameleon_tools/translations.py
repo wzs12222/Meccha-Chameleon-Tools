@@ -169,6 +169,11 @@ _TR = {
     "Quit": {"CN": "\u9000\u51fa"},
     "Already Running": {"CN": "\u5df2\u5728\u8fd0\u884c"},
     "MecchaCamouflage is already running.\nOnly one instance is allowed.": {"CN": "MecchaCamouflage \u5df2\u5728\u8fd0\u884c\u3002\n\u53ea\u5141\u8bb8\u542f\u52a8\u4e00\u4e2a\u5b9e\u4f8b\u3002"},
+    "HYPERVISION": {"CN": "\u8d85\u89c6\u89c9"},
+    "HyperVision Enabled": {"CN": "\u542f\u7528\u8d85\u89c6\u89c9"},
+    "Show Paths": {"CN": "\u663e\u793a\u8def\u5f84"},
+    "Show Exposure Volume": {"CN": "\u663e\u793a\u66b4\u9732\u4f53\u79ef"},
+    "Radar Terrain": {"CN": "\u96f7\u8fbe\u5730\u5f62"},
 }
 
 

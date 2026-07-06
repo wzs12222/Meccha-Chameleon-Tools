@@ -123,6 +123,18 @@ class Config:
     camouflage_enabled: bool = False
     camouflage_status: str = "Ready — Press F10 to paint"
 
+    # HyperVision
+    hypervision_enabled: bool = False
+    hv_mode: str = "auto"
+    hv_path_count: int = 3
+    hv_show_paths: bool = True
+    hv_show_exposure: bool = True
+    hv_quality: str = "high"
+
+    # Radar terrain
+    radar_terrain: bool = True
+    radar_z_level: int = 0
+
     # Game directory
     game_directory: str = r"C:\Program Files (x86)\Steam\steamapps\common\MECCA CHAMELEON\Chameleon\Binaries\Win64"
 

@@ -271,7 +271,8 @@ def draw_skeleton(painter, bone_positions, camera, screen_w, screen_h, color):
             painter.drawLine(int(x1), int(y1), int(x2), int(y2))
 
 
-def draw_radar(painter, cam, local_pos, players, radar_cx, radar_cy, radar_size, radar_range, color, opacity):
+def draw_radar(painter, cam, local_pos, players, radar_cx, radar_cy, radar_size, radar_range, color, opacity,
+               terrain_segments=None, current_z=0.0):
     """Draw a 2D radar overlay in the corner."""
     half = radar_size / 2
     painter.setPen(QPen(QColor(255, 255, 255, opacity), 1))
@@ -282,6 +283,38 @@ def draw_radar(painter, cam, local_pos, players, radar_cx, radar_cy, radar_size,
     painter.setPen(Qt.NoPen)
     painter.setBrush(QColor(0, 255, 0, 220))
     painter.drawEllipse(int(radar_cx - 2), int(radar_cy - 2), 5, 5)
+    # Draw terrain segments (wall outlines)
+    if terrain_segments and current_z is not None:
+        cam_yaw_rad = math.radians(cam["rot"][1])
+        cam_sin = math.sin(cam_yaw_rad)
+        cam_cos = math.cos(cam_yaw_rad)
+        for seg in terrain_segments:
+            x1, y1, x2, y2, stype, sz = seg[:6]
+            if abs(sz - current_z) > 200:
+                continue
+            # World to radar coords
+            dx1, dy1 = x1 - local_pos[0], y1 - local_pos[2]
+            dx2, dy2 = x2 - local_pos[0], y2 - local_pos[2]
+            d1 = math.sqrt(dx1*dx1 + dy1*dy1)
+            d2 = math.sqrt(dx2*dx2 + dy2*dy2)
+            if d1 > radar_range or d2 > radar_range:
+                continue
+            a1 = math.atan2(dx1, dy1) - cam_yaw_rad
+            a2 = math.atan2(dx2, dy2) - cam_yaw_rad
+            r1 = (d1 / radar_range) * (half - 8)
+            r2 = (d2 / radar_range) * (half - 8)
+            sx1 = radar_cx + r1 * math.sin(a1)
+            sy1 = radar_cy - r1 * math.cos(a1)
+            sx2 = radar_cx + r2 * math.sin(a2)
+            sy2 = radar_cy - r2 * math.cos(a2)
+            if stype == "wall":
+                painter.setPen(QPen(QColor(180, 180, 200, 150), 1))
+            elif stype == "overhang":
+                painter.setPen(QPen(QColor(120, 80, 80, 100), 1, Qt.DashLine))
+            else:
+                painter.setPen(QPen(QColor(140, 140, 160, 120), 1))
+            painter.drawLine(int(sx1), int(sy1), int(sx2), int(sy2))
+
     cam_yaw = math.radians(cam["rot"][1])
     for p in players:
         pos = p["pos"]
@@ -736,6 +769,21 @@ class Menu(QWidget):
         self.spn_point.valueChanged.connect(lambda v: setattr(self.config, "point_size", v))
         pr.addWidget(self.spn_point)
         lo.addLayout(pr)
+        hvsep = QFrame()
+        hvsep.setFrameShape(QFrame.HLine)
+        hvsep.setStyleSheet("color: #2a2a3e;")
+        lo.addWidget(hvsep)
+        hvhdr = QLabel(_tr("HYPERVISION"))
+        hvhdr.setStyleSheet("font-size: 12px; font-weight: bold; color: #8ab4f8;")
+        lo.addWidget(hvhdr)
+        self.cb_hv = self._chk(_tr("HyperVision Enabled"), "hypervision_enabled")
+        lo.addWidget(self.cb_hv)
+        self.cb_hv_paths = self._chk(_tr("Show Paths"), "hv_show_paths")
+        self.cb_hv_exposure = self._chk(_tr("Show Exposure Volume"), "hv_show_exposure")
+        lo.addWidget(self.cb_hv_paths)
+        lo.addWidget(self.cb_hv_exposure)
+        self.cb_terrain = self._chk(_tr("Radar Terrain"), "radar_terrain")
+        lo.addWidget(self.cb_terrain)
         lo.addStretch()
 
     def _build_radar_tab(self):
@@ -1108,6 +1156,10 @@ class Overlay(QWidget):
         self._reader_running = True
         self._reader_thread = threading.Thread(target=self._reader_loop, daemon=True)
         self._reader_thread.start()
+        self._terrain_cache = None
+        self._terrain_timer = QTimer(self)
+        self._terrain_timer.timeout.connect(self._refresh_terrain)
+        self._terrain_timer.start(5000)
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._tick_overlay)
@@ -1143,6 +1195,17 @@ class Overlay(QWidget):
                 self.setGeometry(0, 0, 1920, 1080)
         except Exception:
             self.setGeometry(0, 0, 1920, 1080)
+
+    def _refresh_terrain(self):
+        if not self.esp or not self.config.radar_terrain:
+            return
+        try:
+            segs = self.esp.scan_terrain()
+            if segs:
+                from meccha_chameleon_tools.hypervision import simplify_segments
+                self._terrain_cache = simplify_segments(segs)
+        except Exception:
+            pass
 
     def _try_attach(self):
         if self.esp is None:
@@ -1507,10 +1570,13 @@ class Overlay(QWidget):
                     p["color"] = self.config.enemy_color
                 else:
                     p["color"] = self.config.teammate_color
+            terrain = getattr(self, "_terrain_cache", None)
+            cz = local_pos[2] if local_pos else 0
             draw_radar(painter, cam, local_pos, enemy_list,
                        radar_x, radar_y,
                        self.config.radar_size, self.config.radar_range,
-                       self.config.radar_color, self.config.radar_opacity)
+                       self.config.radar_color, self.config.radar_opacity,
+                       terrain_segments=terrain, current_z=cz)
 
         self._rendering = False
 
