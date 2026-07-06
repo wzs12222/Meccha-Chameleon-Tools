@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import sys, os, ctypes, subprocess, threading, json, time
+import sys, os, ctypes, time
 
 from PyQt5.QtWidgets import QApplication, QMessageBox
 from PyQt5.QtCore import QTimer
@@ -7,28 +7,15 @@ from PyQt5.QtCore import QTimer
 from meccha_chameleon_tools.core import MecchaESP
 from meccha_chameleon_tools.config import Config, load_config, save_config, CONFIG_FILE
 from meccha_chameleon_tools.translations import _tr
-from meccha_chameleon_tools.ui import Menu
+from meccha_chameleon_tools.ui import Menu, Overlay
 
 _DEFAULT_GAME_DIR = r"C:\Program Files (x86)\Steam\steamapps\common\MECCA CHAMELEON\Chameleon\Binaries\Win64"
-_OVERLAY_EXE = "meccha-overlay.exe"
-_MENU_TOGGLE_EVENT = "MecchaMenuToggle"
-
-g_overlay_proc = None
-g_menu_visible = True
 
 
 def get_game_dir(config=None):
     if config and hasattr(config, "game_directory") and config.game_directory:
         return config.game_directory
     return _DEFAULT_GAME_DIR
-
-
-def _resource_path(relative):
-    try:
-        base = sys._MEIPASS
-    except AttributeError:
-        base = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(base, relative)
 
 
 def detect_system_language():
@@ -60,42 +47,6 @@ def _check_single_instance():
         sys.exit(1)
 
 
-def _start_overlay():
-    global g_overlay_proc
-    exe_path = _resource_path(_OVERLAY_EXE)
-    if not os.path.exists(exe_path):
-        return
-    try:
-        g_overlay_proc = subprocess.Popen(
-            [exe_path],
-            creationflags=subprocess.CREATE_NO_WINDOW,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-    except Exception:
-        g_overlay_proc = None
-
-
-def _menu_toggle_listener(menu):
-    global g_menu_visible
-    event = None
-    try:
-        event = ctypes.windll.kernel32.CreateEventW(None, False, False, _MENU_TOGGLE_EVENT)
-        while True:
-            if ctypes.windll.kernel32.WaitForSingleObject(event, 500) == 0:
-                g_menu_visible = not g_menu_visible
-                if g_menu_visible:
-                    menu.show()
-                    menu.activateWindow()
-                else:
-                    menu.hide()
-    except Exception:
-        pass
-    finally:
-        if event:
-            ctypes.windll.kernel32.CloseHandle(event)
-
-
 def main():
     _check_single_instance()
     _set_dpi_aware()
@@ -103,7 +54,7 @@ def main():
 
     import meccha_chameleon_tools.logger as log
     log.init()
-    log.info("=== MecchaCamouflage v1.9.1-wow starting (C++ overlay mode) ===")
+    log.info("=== MecchaCamouflage v1.9.1-wow (Python overlay mode) ===")
     if "--verbose" in sys.argv or "-v" in sys.argv:
         log.enable()
 
@@ -114,7 +65,6 @@ def main():
             config.language = detected
     _tr.set_language(config.language)
 
-    # Game attach
     esp = None
     for retry in range(5):
         try:
@@ -125,35 +75,19 @@ def main():
             log.warn(f"Game attach attempt {retry+1}: {e}")
             time.sleep(1)
 
-    # Start C++ overlay (it has its own memory engine)
-    _start_overlay()
-    log.info("C++ overlay launched")
-
-    # Menu only (no Python overlay - C++ does the rendering)
     menu = Menu(config, esp)
     menu.show()
 
-    # Menu toggle thread (listens for F1/Insert from overlay)
-    t = threading.Thread(target=_menu_toggle_listener, args=(menu,), daemon=True)
-    t.start()
+    # Python overlay — fully functional, pixel-perfect reference
+    overlay = Overlay(esp, config)
+    overlay.show()
 
-    app.aboutToQuit.connect(lambda: _cleanup(config, esp))
+    app.aboutToQuit.connect(lambda: (save_config(config), esp.cleanup() if esp else None))
     ret = app.exec_()
-    _cleanup(config, esp)
-    sys.exit(ret)
-
-
-def _cleanup(config, esp):
-    global g_overlay_proc
     save_config(config)
-    if g_overlay_proc and g_overlay_proc.poll() is None:
-        try:
-            g_overlay_proc.terminate()
-            g_overlay_proc.wait(3)
-        except Exception:
-            pass
     if esp:
         esp.cleanup()
+    sys.exit(ret)
 
 
 if __name__ == "__main__":
