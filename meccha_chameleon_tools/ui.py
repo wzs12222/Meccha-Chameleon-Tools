@@ -90,7 +90,8 @@ def clamp_screen(x, y, w, h, margin=10):
 
 
 def w2s_snap(world_pos, camera, screen_w, screen_h):
-    """Project world pos to screen edge for snap lines. Works even behind camera."""
+    """Project world pos to screen for snap lines. Uses angle-based projection
+    that works correctly at ALL camera angles (no gimbal lock)."""
     try:
         cam_loc, cam_rot = camera["loc"], camera["rot"]
         fov = camera.get("fov", 90)
@@ -102,44 +103,40 @@ def w2s_snap(world_pos, camera, screen_w, screen_h):
         dz = world_pos[2] - cam_loc[2]
         if not (math.isfinite(dx) and math.isfinite(dy) and math.isfinite(dz)):
             return None
-        view_x = dx * forward[0] + dy * forward[1] + dz * forward[2]
-        view_y = dx * right[0] + dy * right[1] + dz * right[2]
-        view_z = dx * up[0] + dy * up[1] + dz * up[2]
 
-        if view_x > 0.1:
-            # Normal projection (in front of camera)
-            tan_hfov = math.tan(math.radians(fov) / 2.0)
-            if tan_hfov <= 0.001:
-                return None
-            aspect = screen_w / max(1, screen_h)
-            ndc_x = view_y / (view_x * tan_hfov)
-            ndc_y = view_z / (view_x * tan_hfov / aspect)
-            if abs(ndc_x) > 1.5 or abs(ndc_y) > 1.5:
-                return None
-            sx = (1.0 + ndc_x) * screen_w / 2.0
-            sy = (1.0 - ndc_y) * screen_h / 2.0
-            return (sx, sy) if math.isfinite(sx) and math.isfinite(sy) else None
-        else:
-            # Behind camera: use vy/vz as 2D screen direction from center to edge
-            eps = 0.001
-            mag = math.hypot(view_y, view_z)
-            if mag < eps:
-                return None
-            # Extend direction to screen boundary
-            cx, cy_ = screen_w / 2.0, screen_h / 2.0
-            # The direction (view_y, view_z) in view space maps to screen direction
-            # vy → right (+X), vz → up (-Y, since screen Y is inverted)
-            dx_s = view_y / mag
-            dy_s = -view_z / mag
-            if abs(dx_s) > abs(dy_s):
-                t = (screen_w / 2 - 5) / max(eps, abs(dx_s))
-            else:
-                t = (screen_h / 2 - 5) / max(eps, abs(dy_s))
-            sx = cx + dx_s * t
-            sy = cy_ + dy_s * t
-            sx = max(5, min(screen_w - 5, sx))
-            sy = max(5, min(screen_h - 5, sy))
-            return (sx, sy)
+        # Direction vector from camera to player (world space)
+        dir_len = math.hypot(dx, dy, dz)
+        if dir_len < 1:
+            return None
+        dx_n, dy_n, dz_n = dx / dir_len, dy / dir_len, dz / dir_len
+
+        # Project direction onto view axes
+        view_x = dx_n * forward[0] + dy_n * forward[1] + dz_n * forward[2]
+        view_y = dx_n * right[0] + dy_n * right[1] + dz_n * right[2]
+        view_z = dx_n * up[0] + dy_n * up[1] + dz_n * up[2]
+
+        # Compute azimuth (horizontal) and elevation (vertical) angles
+        # azimuth = angle from forward to right in horizontal plane
+        # elevation = angle from forward to up
+        az = math.atan2(view_y, view_x)  # radians, positive = right
+        el = math.atan2(view_z, view_x)  # radians, positive = up
+
+        # Normalize to NDC using FOV
+        hfov = math.radians(fov) / 2.0
+        aspect = screen_w / max(1, screen_h)
+        ndc_x = az / hfov
+        ndc_y = el / (hfov / aspect)
+
+        # For extreme angles (behind camera), az/el wrap around but atan2 handles it
+        # Clamp to screen with margin
+        ndc_x = max(-1.2, min(1.2, ndc_x))
+        ndc_y = max(-1.2, min(1.2, ndc_y))
+
+        sx = (1.0 + ndc_x) * screen_w / 2.0
+        sy = (1.0 - ndc_y) * screen_h / 2.0
+        sx = max(5, min(screen_w - 5, sx))
+        sy = max(5, min(screen_h - 5, sy))
+        return (sx, sy)
     except Exception:
         return None
 
@@ -1718,7 +1715,9 @@ class Overlay(QWidget):
                     bar_y = dsy - 20 * scale
                     draw_health_bar(painter, bar_x, bar_y, 24 * scale, 4, hp, sh if self.config.shield_bar else None)
 
-            if self.config.snap_lines:
+            # No snap line for ghost/unidentified players (no role)
+            no_role = not is_hunter and not is_survivor and not is_local
+            if self.config.snap_lines and not no_role:
                 # Use w2s_snap for extreme angles (player behind camera)
                 snap_pos = w2s_snap(pos, cam, w, h) or screen_center
                 x0, y0 = int(w / 2), int(h)
