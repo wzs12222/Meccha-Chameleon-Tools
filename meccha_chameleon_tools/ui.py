@@ -1240,9 +1240,7 @@ class Overlay(QWidget):
         self.timer.timeout.connect(self._tick_overlay)
         self.timer.start(1000 // max(10, min(60, self.config.esp_fps)))
 
-        self._attach_timer = QTimer(self)
-        self._attach_timer.timeout.connect(self._try_attach)
-        self._attach_timer.start(2000)
+        # Attachment is handled by _reader_loop; no separate timer needed
 
         self.game_hwnd = self._find_game_window()
         self._resize_to_game()
@@ -1321,8 +1319,8 @@ class Overlay(QWidget):
                         self.esp.cleanup()
                     except Exception:
                         pass
-                    self.esp = None
                     with self._cache_lock:
+                        self.esp = None
                         self._cached_cam = None
                         self._cached_players = []
             except Exception:
@@ -1377,18 +1375,19 @@ class Overlay(QWidget):
             self._cursor_shown = cursor_should_be
         tp_vk = vk_from_name(self.config.teleport_collectible_key)
         tp_down = bool(ctypes.windll.user32.GetAsyncKeyState(tp_vk) & 0x8000)
-        if tp_down and not self._tp_key_state:
+        _esp = self.esp
+        if tp_down and not self._tp_key_state and _esp:
             now = time.time()
             last = getattr(self, '_last_tp_time', 0.0)
-            if now - last > 1.0 and self._hv_bridge_ok:
+            if now - last > 1.0:
                 self._last_tp_time = now
-                self.esp.teleport_collectible(self.config.teleport_collectible_key)
+                _esp.teleport_collectible(self.config.teleport_collectible_key)
         self._tp_key_state = tp_down
-        if self.config.player_mod_enabled and not self._player_mod_active:
-            self.esp.player_mod(self.config.player_speed_mult, self.config.player_jump_mult)
+        if self.config.player_mod_enabled and not self._player_mod_active and _esp:
+            _esp.player_mod(self.config.player_speed_mult, self.config.player_jump_mult)
             self._player_mod_active = True
-        elif not self.config.player_mod_enabled and self._player_mod_active:
-            self.esp.player_mod(1.0, 1.0)
+        elif not self.config.player_mod_enabled and self._player_mod_active and _esp:
+            _esp.player_mod(1.0, 1.0)
             self._player_mod_active = False
 
     def paintEvent(self, event):
@@ -1415,7 +1414,8 @@ class Overlay(QWidget):
             return
 
         # Camera: read synchronously for pixel-accurate projection (fast, few reads)
-        cam = self.esp.get_camera() if self.esp else None
+        _esp = self.esp
+        cam = _esp.get_camera() if _esp else None
 
         # Players: from background thread cache (avoids freezing)
         with self._cache_lock:
@@ -1432,7 +1432,6 @@ class Overlay(QWidget):
             p.get("is_hunter") or p.get("is_survivor") for p in all_players
         )
 
-        # Determine local player's role status (before filtering so observer_abs is available)
         local_pos = None
         local_is_hunter = None
         local_is_survivor = None
@@ -1446,7 +1445,6 @@ class Overlay(QWidget):
         local_has_role = local_found and (local_is_hunter or local_is_survivor)
         local_cm = norm_color_mode(self.config.color_mode)
 
-        # Filter pass — skip team filters in observer mode (no friend/foe distinction)
         filtered = []
         for p in all_players:
             is_local = p["is_local"]
@@ -1555,7 +1553,10 @@ class Overlay(QWidget):
                 draw_corner_box(painter, pos, cam, w, h, self.config.box_height_world, hw, rot, color, scale, 0.25, pw)
 
             if self.config.skeleton_esp and actor and not is_local:
-                bones = self.esp.get_skeleton_positions(actor) or self.esp.get_skeleton_positions_by_indices(actor, self.config.bone_indices)
+                try:
+                    bones = _esp.get_skeleton_positions(actor) or _esp.get_skeleton_positions_by_indices(actor, self.config.bone_indices) if _esp else None
+                except Exception:
+                    bones = None
                 if bones:
                     draw_skeleton(painter, bones, cam, w, h, self.config.skeleton_color)
 
@@ -1591,30 +1592,33 @@ class Overlay(QWidget):
                 text = " | ".join(label_parts)
                 painter.drawText(label_x, label_y, text)
 
-        if self.config.draw_all:
+        if self.config.draw_all and _esp:
             actor_count = 0
-            for adata in self.esp.iter_actors(max_actors=500, class_filter="Collectible"):
-                d = dist(adata["pos"], cam["loc"])
-                if d > self.config.draw_all_max_distance:
-                    continue
-                s = w2s(adata["pos"], cam, w, h)
-                if not s:
-                    continue
-                actor_count += 1
-                act_color = (100, 255, 100)
-                painter.setPen(QPen(QColor(*act_color), 1))
-                sx_a, sy_a = int(s[0]), int(s[1])
-                painter.drawEllipse(sx_a - 2, sy_a - 2, 4, 4)
-                if self.config.draw_all_names:
-                    cname = adata["class_name"][:20] if adata["class_name"] else "Actor"
-                    painter.drawText(sx_a + 4, sy_a + 4, cname)
+            try:
+                for adata in _esp.iter_actors(max_actors=500, class_filter="Collectible"):
+                    d = dist(adata["pos"], cam["loc"])
+                    if d > self.config.draw_all_max_distance:
+                        continue
+                    s = w2s(adata["pos"], cam, w, h)
+                    if not s:
+                        continue
+                    actor_count += 1
+                    act_color = (100, 255, 100)
+                    painter.setPen(QPen(QColor(*act_color), 1))
+                    sx_a, sy_a = int(s[0]), int(s[1])
+                    painter.drawEllipse(sx_a - 2, sy_a - 2, 4, 4)
+                    if self.config.draw_all_names:
+                        cname = adata["class_name"][:20] if adata["class_name"] else "Actor"
+                        painter.drawText(sx_a + 4, sy_a + 4, cname)
+            except Exception:
+                pass
             if actor_count > 0:
                 painter.setPen(QPen(QColor(150, 255, 150)))
                 painter.drawText(w - 200, 60, _tr("Items: {count}", count=actor_count))
 
         status_parts = []
         status_parts.append(_tr("Players: {count}", count=len(all_players)))
-        if self.esp:
+        if _esp:
             status_parts.append(_tr("Attached"))
         else:
             status_parts.append(_tr("Waiting..."))
