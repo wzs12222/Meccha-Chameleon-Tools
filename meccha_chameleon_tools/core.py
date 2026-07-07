@@ -846,7 +846,18 @@ class MecchaESP:
         is_spectating = False
         try:
             if local_pawn:
-                _, ref_is_hunter, ref_is_survivor = self._detect_role(local_pawn)
+                local_class = self.objects.class_name(local_pawn) or ""
+                # If spectating (pawn class has 'Spectate'), find nearest real player for reference
+                if "Spectate" in local_class and raw_players:
+                    spec_idx = self._find_spectate_target(cam_pos, raw_players) if cam_pos else 0
+                    if spec_idx is None and raw_players:
+                        spec_idx = 0
+                    if spec_idx is not None:
+                        spec_pawn = raw_players[spec_idx][0]
+                        _, ref_is_hunter, ref_is_survivor = self._detect_role(spec_pawn)
+                        is_spectating = True
+                else:
+                    _, ref_is_hunter, ref_is_survivor = self._detect_role(local_pawn)
             elif raw_players:
                 spec_idx = self._find_spectate_target(cam_pos, raw_players) if cam_pos else 0
                 if spec_idx is None and raw_players:
@@ -862,15 +873,11 @@ class MecchaESP:
                 continue
             role, is_hunter, is_survivor = self._detect_role(pawn)
             is_enemy = False
-            if ref_is_hunter or ref_is_survivor:
-                if is_hunter or is_survivor:
-                    if ref_is_hunter and is_survivor:
-                        is_enemy = True
-                    elif ref_is_survivor and is_hunter:
-                        is_enemy = True
-            else:
-                # Can't determine reference role (spectating/unknown) → default to enemy
-                is_enemy = (pawn != local_pawn)
+            if is_hunter or is_survivor:
+                if ref_is_hunter and is_survivor:
+                    is_enemy = True
+                elif ref_is_survivor and is_hunter:
+                    is_enemy = True
             if enemy_only and not is_enemy:
                 continue
             if cam_pos and dist(cam_pos, pos) > 50000:
