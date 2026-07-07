@@ -91,7 +91,7 @@ def main():
 
     import meccha_chameleon_tools.logger as log
     log.init()
-    log.info("=== MecchaCamouflage v1.9.1-wow (Python overlay mode) ===")
+    log.info("=== MecchaCamouflage v1.9.0-wow (Python overlay mode) ===")
     if "--verbose" in sys.argv or "-v" in sys.argv or "--debug" in sys.argv:
         log.enable()
 
