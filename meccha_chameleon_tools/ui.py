@@ -1293,6 +1293,7 @@ class Overlay(QWidget):
         self.timer.start(interval)
 
     def _reader_loop(self):
+        fail_count = 0
         while getattr(self, '_reader_running', False):
             try:
                 if self.config and self.config.enabled and self.esp and self.esp.is_process_alive():
@@ -1310,10 +1311,14 @@ class Overlay(QWidget):
                         with self._cache_lock:
                             self._cached_cam = cam
                             self._cached_players = players
+                        fail_count = 0
+                        if len(players) > 0:
+                            n_h = sum(1 for p in players if p.get("is_hunter"))
+                            n_s = sum(1 for p in players if p.get("is_survivor"))
+                            log.debug(f"Reader: {len(players)} players ({n_h} hunters, {n_s} survivors)")
                 elif self.esp is None:
                     self._try_attach()
                 else:
-                    # Process is dead — clean up
                     log.info("Game process lost — cleaning up for re-attach")
                     try:
                         self.esp.cleanup()
@@ -1323,8 +1328,14 @@ class Overlay(QWidget):
                         self.esp = None
                         self._cached_cam = None
                         self._cached_players = []
-            except Exception:
-                pass
+                    fail_count = 0
+            except Exception as e:
+                fail_count += 1
+                if fail_count >= 30:
+                    log.warn(f"Reader loop: {fail_count} consecutive failures, clearing cache")
+                    with self._cache_lock:
+                        self._cached_players = []
+                    fail_count = 0
 
             time.sleep(0.1)
 

@@ -652,10 +652,11 @@ class MecchaESP:
     def _detect_role(self, pawn):
         """Return ('Hunter', True, False) or ('Survivor', False, True) or ('Unknown', False, False)."""
         try:
-            name = self.objects.class_name(pawn)
-            if "Hunter" in name:
+            name = self.objects.class_name(pawn) or ""
+            name_lower = name.lower()
+            if "hunter" in name_lower:
                 return "Hunter", True, False
-            if "Survivor" in name:
+            if "survivor" in name_lower:
                 return "Survivor", False, True
         except Exception:
             pass
