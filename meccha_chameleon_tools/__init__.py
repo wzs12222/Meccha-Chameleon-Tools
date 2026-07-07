@@ -103,18 +103,8 @@ def main():
             config.language = detected
     _tr.set_language(config.language)
 
-    _boot_msg("Connecting to game...")
+    _boot_msg("Connecting to game (async)...")
     esp = None
-    for retry in range(5):
-        try:
-            esp = MecchaESP()
-            _boot_msg("Game connected.")
-            log.info("Game connected")
-            break
-        except Exception as e:
-            _boot_msg(f"Game attach attempt {retry+1}/5: {e}")
-            log.warn(f"Game attach attempt {retry+1}: {e}")
-            time.sleep(1)
 
     _boot_msg("Creating GUI...")
     menu = Menu(config, esp)
