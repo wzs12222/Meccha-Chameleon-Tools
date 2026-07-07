@@ -1523,8 +1523,11 @@ class Overlay(QWidget):
             self._rendering = False
             return
 
+        # Camera: read synchronously for pixel-accurate projection (fast, few reads)
+        cam = self.esp.get_camera() if self.esp else None
+
+        # Players: from background thread cache (avoids freezing)
         with self._cache_lock:
-            cam = self._cached_cam
             raw = self._cached_players
         all_players = list(raw)
 
