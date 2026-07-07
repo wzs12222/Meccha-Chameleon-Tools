@@ -309,39 +309,8 @@ def draw_radar(painter, cam, local_pos, players, radar_cx, radar_cy, radar_size,
     painter.setPen(Qt.NoPen)
     painter.setBrush(QColor(0, 255, 0, 220))
     painter.drawEllipse(int(radar_cx - 2), int(radar_cy - 2), 5, 5)
-    # Draw terrain segments (wall outlines) with NaN/inf guard
-    if terrain_segments and current_z is not None and radar_range > 0:
-        cam_yaw_rad = math.radians(cam["rot"][1])
-        for seg in terrain_segments:
-            try:
-                x1, y1, x2, y2, stype, sz = seg[:6]
-                if abs(sz - current_z) > 200:
-                    continue
-                dx1, dy1 = x1 - local_pos[0], y1 - local_pos[2]
-                dx2, dy2 = x2 - local_pos[0], y2 - local_pos[2]
-                d1 = math.hypot(dx1, dy1)
-                d2 = math.hypot(dx2, dy2)
-                if d1 > radar_range or d2 > radar_range or d1 < 1 or d2 < 1:
-                    continue
-                a1 = math.atan2(dx1, dy1) - cam_yaw_rad
-                a2 = math.atan2(dx2, dy2) - cam_yaw_rad
-                r1 = (d1 / radar_range) * (half - 8)
-                r2 = (d2 / radar_range) * (half - 8)
-                sx1 = radar_cx + r1 * math.sin(a1)
-                sy1 = radar_cy - r1 * math.cos(a1)
-                sx2 = radar_cx + r2 * math.sin(a2)
-                sy2 = radar_cy - r2 * math.cos(a2)
-                if not (math.isfinite(sx1) and math.isfinite(sy1) and math.isfinite(sx2) and math.isfinite(sy2)):
-                    continue
-                if stype == "wall":
-                    painter.setPen(QPen(QColor(180, 180, 200, 150), 1))
-                elif stype == "overhang":
-                    painter.setPen(QPen(QColor(120, 80, 80, 100), 1, Qt.DashLine))
-                else:
-                    painter.setPen(QPen(QColor(140, 140, 160, 120), 1))
-                painter.drawLine(int(sx1), int(sy1), int(sx2), int(sy2))
-            except Exception:
-                continue
+    # Terrain segment rendering disabled (not functional)
+    # (terrain code omitted)
 
     cam_yaw = math.radians(cam["rot"][1])
     for p in players:
@@ -834,8 +803,9 @@ class Menu(QWidget):
         # self.cb_hv_exposure = self._chk(_tr("Show Exposure Volume"), "hv_show_exposure")
         # lo.addWidget(self.cb_hv_paths)
         # lo.addWidget(self.cb_hv_exposure)
-        self.cb_terrain = self._chk(_tr("Radar Terrain"), "radar_terrain")
-        lo.addWidget(self.cb_terrain)
+        # Radar terrain disabled (not functional in current release)
+        # self.cb_terrain = self._chk(_tr("Radar Terrain"), "radar_terrain")
+        # lo.addWidget(self.cb_terrain)
         # self.cb_hv_paths_3d = self._chk(_tr("Show 3D Nav Lines"), "hv_show_3d")
         # lo.addWidget(self.cb_hv_paths_3d)
         # qr = QHBoxLayout()
@@ -1253,9 +1223,9 @@ class Overlay(QWidget):
         self._reader_running = True
         self._reader_thread = threading.Thread(target=self._reader_loop, daemon=True)
         self._reader_thread.start()
-        # Terrain cache
-        self._terrain_cache = None
-        self._last_terrain_time = 0.0
+        # Terrain cache disabled (not functional)
+        # self._terrain_cache = None
+        # self._last_terrain_time = 0.0
 
         # #HyperVision state disabled (not functional)
         # self._hv_exposure_cloud = []
@@ -1266,11 +1236,6 @@ class Overlay(QWidget):
         # self._hv_timer = QTimer(self)
         # self._hv_timer.timeout.connect(self._hv_tick)
         # self._hv_timer.start(500)
-
-        # Terrain refresh timer
-        self._terrain_immediate = True
-        self._terrain_timer = QTimer(self)
-        self._terrain_timer.timeout.connect(lambda: self._tick_terrain(force=False))
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._tick_overlay)
         self.timer.start(1000 // max(10, min(60, self.config.esp_fps)))
@@ -1306,20 +1271,9 @@ class Overlay(QWidget):
         except Exception:
             self.setGeometry(0, 0, 1920, 1080)
 
-    def _tick_terrain(self, force=False):
-        """Refresh terrain. force=True for immediate first draw."""
-        if not self.esp or not self.config.radar_terrain:
-            return
-        now = time.time()
-        if not force and now - self._last_terrain_time < 30:
-            return
-        self._last_terrain_time = now
-        try:
-            segs = self.esp.scan_terrain()
-            if segs:
-                self._terrain_cache = simplify_segments(segs)
-        except Exception:
-            pass
+    # Terrain scanning disabled (not functional)
+    # def _tick_terrain(self, force=False):
+    #     pass
 
     # HyperVision disabled (not functional in current release)
     # def _hv_tick(self):
@@ -1765,13 +1719,10 @@ class Overlay(QWidget):
                         p["color"] = self.config.enemy_color
                     else:
                         p["color"] = self.config.teammate_color
-            terrain = getattr(self, "_terrain_cache", None)
-            cz = local_pos[2] if local_pos else 0
             draw_radar(painter, cam, local_pos, enemy_list,
                        radar_x, radar_y,
                        self.config.radar_size, self.config.radar_range,
-                       self.config.radar_color, self.config.radar_opacity,
-                       terrain_segments=terrain, current_z=cz)
+                       self.config.radar_color, self.config.radar_opacity)
 
         self._rendering = False
 

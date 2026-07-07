@@ -727,48 +727,9 @@ class MecchaESP:
             except Exception:
                 continue
 
-    def scan_terrain(self, center=None, range_xy=10000.0):
-        """Scan ALL actors with a root position; return 2D points for map."""
-        points = []
-        if center is None:
-            cam = self.get_camera()
-            if not cam:
-                return points
-            center = cam["loc"]
-        half = range_xy * 0.5
-        count = 0
-        t0 = time.time()
-        for obj in self.objects.iter_objects():
-            if count >= 20000:
-                break
-            try:
-                cls = self.objects.class_name(obj)
-                if not cls or cls.startswith("Default__"):
-                    continue
-                # Skip non-actor types
-                if any(x in cls for x in ("Function", "Class", "Package", "Enum",
-                                           "ScriptStruct", "Property", "Field",
-                                           "Interface", "Delegate", "MetaData")):
-                    continue
-                root = rp(self.pm, obj + self.offsets.get("AActor::RootComponent", 0))
-                if not root:
-                    continue
-                ox = rfloat(self.pm, root + 0x120)
-                oy = rfloat(self.pm, root + 0x124)
-                if not (math.isfinite(ox) and math.isfinite(oy)):
-                    continue
-                if abs(ox) < 0.1 and abs(oy) < 0.1:
-                    continue
-                if abs(ox - center[0]) > half or abs(oy - center[1]) > half:
-                    continue
-                points.append((ox, oy, cls))
-                count += 1
-            except Exception:
-                continue
-        dt = time.time() - t0
-        from meccha_chameleon_tools import logger as log
-        log.debug(f"scan_terrain: {count} points in {dt*1000:.0f}ms")
-        return points
+    # Terrain scanning disabled (not functional)
+    # def scan_terrain(self, ...):
+    #     pass
 
     def _is_visible(self, actor):
         """Approximate visibility check: read body/sphere visibility flag if available."""
