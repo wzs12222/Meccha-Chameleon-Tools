@@ -102,6 +102,7 @@ _TR = {
     "ESP OFF": {"DE": "ESP AUS", "FR": "ESP D\u00c9SACTIV\u00c9", "ES": "ESP DESACTIVADO", "CN": "ESP \u5173\u95ed", "JP": "ESP OFF", "KR": "ESP \uafb4\uc9d0"},
     "NO CAMERA": {"DE": "KEINE KAMERA", "FR": "PAS DE CAM\u00c9RA", "ES": "SIN C\u00c1MARA", "CN": "\u65e0\u6444\u50cf\u673a", "JP": "\u30ab\u30e1\u30e9\u306a\u3057", "KR": "\uce74\uba54\ub77c \uc5c6\uc74c"},
     "YOU": {"DE": "DU", "FR": "VOUS", "ES": "T\u00da", "CN": "\u4f60", "JP": "\u3042\u306a\u305f", "KR": "\ub098"},
+    "Player {idx}": {"DE": "Spieler {idx}", "FR": "Joueur {idx}", "ES": "Jugador {idx}", "CN": "\u73a9\u5bb6 {idx}", "JP": "\u30d7\u30ec\u30a4\u30e4\u30fc {idx}", "KR": "\ud50c\ub808\uc774\uc5b4 {idx}"},
     "Enemy {idx}": {"DE": "Gegner {idx}", "FR": "Ennemi {idx}", "ES": "Enemigo {idx}", "CN": "\u654c\u4eba {idx}", "JP": "\u6575 {idx}", "KR": "\uc801 {idx}"},
     "INVINCIBLE": {"DE": "UNVERWUNDBAR", "FR": "INVINCIBLE", "ES": "INVENCIBLE", "CN": "\u65e0\u654c", "JP": "\u7121\u6575", "KR": "\ubb34\uc801"},
     "Players: {count}": {"DE": "Spieler: {count}", "FR": "Joueurs: {count}", "ES": "Jugadores: {count}", "CN": "\u73a9\u5bb6: {count}", "JP": "\u30d7\u30ec\u30a4\u30e4\u30fc: {count}", "KR": "\ud50c\ub808\uc774\uc5b4: {count}"},
