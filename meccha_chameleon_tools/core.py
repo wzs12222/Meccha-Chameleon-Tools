@@ -10,7 +10,6 @@ import os
 import sys
 import json
 import time
-import pymem
 import ctypes
 import subprocess as _subprocess
 
@@ -35,7 +34,7 @@ OFFSETS = {
 }
 
 # ---------------------------------------------------------------------------
-# Memory primitives — C++ meccha-core.dll (mandatory)
+# Memory primitives — C++ meccha-core.dll only
 # ---------------------------------------------------------------------------
 _USE_CORE = False
 try:
@@ -46,50 +45,58 @@ try:
         write_float as _mc_wf, write_double as _mc_wd,
         read_vec3 as _mc_rv3, read_vec3_f as _mc_rv3f,
     )
-    _USE_CORE = _mc_init()
+    # mc_init runs find_process which can be slow; use timeout
+    import threading
+    _mc_result = [False]
+    def _do_init():
+        _mc_result[0] = _mc_init()
+    t = threading.Thread(target=_do_init, daemon=True)
+    t.start()
+    t.join(3.0)
+    _USE_CORE = _mc_result[0]
+    if not _USE_CORE:
+        print("[Meccha Chameleon Tools] meccha-core.dll: game process not found (will attach later)")
+except ImportError:
+    raise RuntimeError("meccha-core.dll not found — tool cannot function")
 except Exception as e:
     raise RuntimeError(f"meccha-core.dll initialization failed: {e}")
 
 def rp(pm, addr):
-    return _mc_rp(addr)
+    return _mc_rp(addr) if _USE_CORE else 0
 
 def ru32(pm, addr):
-    return _mc_ru32(addr)
+    return _mc_ru32(addr) if _USE_CORE else 0
 
 def ru16(pm, addr):
-    return _mc_ru16(addr)
+    return _mc_ru16(addr) if _USE_CORE else 0
 
 def rfloat(pm, addr):
-    return _mc_rf(addr)
+    return _mc_rf(addr) if _USE_CORE else 0.0
 
 def rdouble(pm, addr):
-    return _mc_rd(addr)
+    return _mc_rd(addr) if _USE_CORE else 0.0
 
 def wfloat(pm, addr, value):
-    return _mc_wf(addr, value)
+    if _USE_CORE:
+        return _mc_wf(addr, value)
+    return False
 
 def rvec3(pm, addr):
-    return _mc_rv3(addr)
+    return _mc_rv3(addr) if _USE_CORE else (0.0, 0.0, 0.0)
 
 def rvec3_f(pm, addr):
-    if _USE_CORE:
-        return _mc_rv3f(addr)
-    try:
-        return struct.unpack("<fff", pm.read_bytes(addr, 12))
-    except Exception:
-        return (0.0, 0.0, 0.0)
+    return _mc_rv3f(addr) if _USE_CORE else (0.0, 0.0, 0.0)
 
 def rfquat(pm, addr):
-    try:
-        return struct.unpack("<dddd", pm.read_bytes(addr, 32))
-    except Exception:
-        return (0.0, 0.0, 0.0, 1.0)
+    return _mc_rv3(pm, addr) if _USE_CORE else (0.0, 0.0, 0.0, 1.0)
 
 def read_array(pm, addr):
+    if not _USE_CORE:
+        return 0, 0, 0
     try:
-        data = rp(pm, addr)
-        count = ru32(pm, addr + 8)
-        cap = ru32(pm, addr + 0x10)
+        data = _mc_rp(addr)
+        count = _mc_ru32(addr + 8)
+        cap = _mc_ru32(addr + 0x10)
         return data, count, cap
     except Exception:
         return 0, 0, 0
@@ -123,11 +130,28 @@ class PatternScanner:
 
     def __init__(self, pm, module_name):
         self.pm = pm
-        self.module = pymem.process.module_from_name(pm.process_handle, module_name)
-        if not self.module:
+        self.base = 0
+        self.size = 0
+        try:
+            import ctypes
+            from meccha_chameleon_tools.memory_engine import pid as _mc_pid
+            pid = _mc_pid()
+            if pid:
+                snap = ctypes.windll.kernel32.CreateToolhelp32Snapshot(0x00000008, pid)
+                if snap and snap != -1:
+                    me = ctypes.create_string_buffer(584)
+                    ctypes.c_int32.from_buffer(me, 0).value = 584
+                    if ctypes.windll.kernel32.Module32FirstW(snap, ctypes.byref(me)):
+                        name_bytes = me[12:12+256]
+                        name = name_bytes.split(b'\x00')[0].decode('utf-8', errors='replace').lower()
+                        if module_name.lower() in name:
+                            self.base = ctypes.c_uint64.from_buffer(me, 264).value
+                            self.size = ctypes.c_uint32.from_buffer(me, 272).value
+                    ctypes.windll.kernel32.CloseHandle(snap)
+        except Exception:
+            pass
+        if not self.base:
             raise RuntimeError(f"Module {module_name} not found")
-        self.base = self.module.lpBaseOfDll
-        self.size = self.module.SizeOfImage
 
     def _match_at(self, data, offset, pattern, mask):
         for j in range(len(pattern)):
@@ -457,7 +481,7 @@ class MecchaESP:
     SHIELD_PROP_NAMES = ("Shield", "Armor", "ShieldHealth", "ExtraHealth", "ArmorHealth")
 
     def __init__(self):
-        self.pm = pymem.Pymem(self.PROCESS_NAME)
+        self.pm = self._make_pm()
         self.guobject_array = self._scan_guobject_array()
         if not self.guobject_array:
             raise RuntimeError("Could not find GUObjectArray via pattern scan")
@@ -485,6 +509,19 @@ class MecchaESP:
         self.read_u16 = lambda a: struct.unpack("<H", self.pm.read_bytes(a, 2))[0]
         self.read_float = lambda a: struct.unpack("<f", self.pm.read_bytes(a, 4))[0]
         self.write_u64 = lambda a, v: self.pm.write_bytes(a, struct.pack("<Q", v), 8)
+
+    def _make_pm(self):
+        """Create a pymem-compatible process handle wrapper using the C++ DLL."""
+        from meccha_chameleon_tools.memory_engine import pid as _mc_pid, read as _mc_read
+        class _PmWrapper:
+            process_id = _mc_pid() or 0
+            process_handle = None
+            def read_bytes(self, addr, size):
+                d = _mc_read(addr, size)
+                return d if d is not None else b"\x00" * size
+            def write_bytes(self, addr, data, size):
+                return False
+        return _PmWrapper()
 
     def _scan_guobject_array(self):
         scanner = PatternScanner(self.pm, self.MODULE_NAME)
@@ -922,18 +959,19 @@ class MecchaESP:
     def is_process_alive(self):
         """Return True if the attached game process is still running."""
         try:
-            pid = self.pm.process_id
+            from meccha_chameleon_tools.memory_engine import pid as _mc_pid, attached as _mc_attached
+            if not _mc_attached():
+                return False
+            pid = _mc_pid()
             if not pid:
                 return False
-            handle = ctypes.windll.kernel32.OpenProcess(
-                0x400, False, pid
-            )
+            handle = ctypes.windll.kernel32.OpenProcess(0x400, False, pid)
             if not handle:
                 return False
             exit_code = ctypes.c_uint32(0)
             ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code))
             ctypes.windll.kernel32.CloseHandle(handle)
-            return exit_code.value == 259  # STILL_ACTIVE
+            return exit_code.value == 259
         except Exception:
             return False
 
@@ -951,7 +989,10 @@ class MecchaESP:
             self._bridge_proc = None
 
     def _ensure_bridge(self):
-        pid = self.pm.process_id
+        from meccha_chameleon_tools.memory_engine import pid as _mc_pid, attached as _mc_attached
+        if not _mc_attached():
+            return False
+        pid = _mc_pid()
         if not pid:
             return False
         ping = MecchaESP._bridge_request("ping")
