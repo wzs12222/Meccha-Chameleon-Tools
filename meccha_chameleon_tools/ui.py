@@ -1290,6 +1290,8 @@ class Overlay(QWidget):
         self._reader_running = True
         self._reader_thread = threading.Thread(target=self._reader_loop, daemon=True)
         self._reader_thread.start()
+        self._prev_pawn_map = {}  # ps_addr → pawn_addr from previous cycle
+        self._original_pawns = {}  # ps_addr → {pos, role, pawn_addr, class_name}
         debug_stats["esp_fps"] = self.config.esp_fps
         # Terrain cache disabled (not functional)
         # self._terrain_cache = None
@@ -1390,12 +1392,31 @@ class Overlay(QWidget):
                         players = list(self.esp.iter_players(
                             include_local=self.config.show_local,
                         ))
+                        # Delta detection: track pawn transitions (Character→Spectate)
+                        current_pawn_map = {}
                         for p in players:
                             actor = p.get("actor")
+                            ps = p.get("player_state")
                             if actor:
                                 p["_health_info"] = self.esp.get_health(actor, p.get("player_state"))
                                 p["_invincible"] = self.esp.get_invincible(actor)
                                 p["_rot"] = self.esp.get_actor_root_rotation(actor)
+                            if actor and ps:
+                                current_pawn_map[ps] = actor
+                                prev_pawn = self._prev_pawn_map.get(ps)
+                                if prev_pawn and prev_pawn != actor:
+                                    prev_class = self.esp.objects.class_name(prev_pawn) or ""
+                                    new_class = self.esp.objects.class_name(actor) or ""
+                                    if "firstpersoncharacter" in prev_class.lower() and "spectate" in new_class.lower():
+                                        prev_pos = self.esp.get_actor_root_pos(prev_pawn)
+                                        if prev_pos:
+                                            role = "Survivor" if "survivor" in prev_class.lower() else "Hunter"
+                                            self._original_pawns[ps] = {
+                                                "pos": prev_pos, "role": role,
+                                                "pawn": prev_pawn, "class": prev_class,
+                                            }
+                                            log.debug(f"Captured original pawn for PS {hex(ps)}: {role} at {prev_pos}")
+                        self._prev_pawn_map = current_pawn_map
                         with self._cache_lock:
                             self._cached_cam = cam
                             self._cached_players = players
@@ -1589,6 +1610,12 @@ class Overlay(QWidget):
             ps = pdata["player_state"]
             idx = pdata["idx"]
             role = pdata.get("role", "Unknown")
+            # Original body tracking for spectating players
+            _orig = self._original_pawns.get(ps) if ps else None
+            _is_spectate = actor and "spectate" in (self.esp.objects.class_name(actor) or "").lower()
+            if _orig and _is_spectate and not is_local:
+                pos = _orig["pos"]
+                role = _orig["role"]
             is_enemy = pdata.get("is_enemy", False)
 
             d = dist(pos, cam["loc"])
@@ -1644,8 +1671,11 @@ class Overlay(QWidget):
             sy += self.config.box_y_offset
             is_invincible = pdata.get("_invincible", False) and self.config.invincible_detect and not is_local
 
-            # Snap line: bottom-center to player screen position (upstream reference logic)
-            if self.config.snap_lines:
+            # Snap line: bottom-center to player screen position
+            _draw_snap = self.config.snap_lines
+            if _draw_snap and _is_spectate and not _orig:
+                _draw_snap = False  # spectating without body → no snap line
+            if _draw_snap:
                 painter.setPen(QPen(QColor(*color), 1))
                 painter.drawLine(int(w / 2), int(h), int(sx), int(sy))
             dsx, dsy = clamp_screen(sx, sy - self.config.box_y_offset, w, h)
@@ -1692,6 +1722,8 @@ class Overlay(QWidget):
                     label_parts.append(_tr("Enemy {idx}", idx=idx))
                 else:
                     label_parts.append(_tr("Teammate {idx}", idx=idx))
+            if _is_spectate and not _orig:
+                label_parts.append("[SPECTATING]")
             if self.config.show_roles and role != "Unknown":
                 label_parts.append(_tr(role))
             if is_invincible:
