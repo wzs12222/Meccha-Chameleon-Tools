@@ -245,6 +245,58 @@ def inject_bridge(game_process=GAME_PROCESS) -> str:
         return str(e)
 
 
+def inject_dll_simple(dll_path: str, game_process=GAME_PROCESS) -> str:
+    """Inject a DLL into the game process using CreateRemoteThread."""
+    pid = _find_game_pid(game_process)
+    if pid is None:
+        return f"Game process '{game_process}' not found"
+    dll_path = str(Path(dll_path).resolve())
+    if not os.path.isfile(dll_path):
+        return f"DLL not found: {dll_path}"
+    kernel32 = ctypes.windll.kernel32
+    PROCESS_ALL_ACCESS = 0x1F0FFF
+    handle = kernel32.OpenProcess(PROCESS_ALL_ACCESS, False, pid)
+    if not handle:
+        return f"OpenProcess failed (PID {pid})"
+    try:
+        path_bytes = dll_path.encode("utf-8")
+        alloc = kernel32.VirtualAllocEx(handle, None, len(path_bytes) + 1, 0x3000, 0x04)
+        if not alloc:
+            return "VirtualAllocEx failed"
+        written = ctypes.c_size_t(0)
+        kernel32.WriteProcessMemory(handle, alloc, path_bytes, len(path_bytes) + 1, ctypes.byref(written))
+        thread_id = ctypes.c_ulong(0)
+        thread = kernel32.CreateRemoteThread(handle, None, 0,
+            kernel32.GetProcAddress(kernel32.GetModuleHandleW("kernel32.dll"), "LoadLibraryW"),
+            alloc, 0, ctypes.byref(thread_id))
+        if not thread:
+            return "CreateRemoteThread failed"
+        kernel32.WaitForSingleObject(thread, 5000)
+        kernel32.CloseHandle(thread)
+        kernel32.VirtualFreeEx(handle, alloc, 0, 0x8000)
+        return ""
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def inject_game_reader(game_process=GAME_PROCESS) -> str:
+    """Inject the game-reader.dll for shared memory game data."""
+    from meccha_chameleon_tools import logger as log
+    native_dir = Path(_resource_path("native"))
+    dll_path = native_dir / "game-reader.dll"
+    if not dll_path.exists():
+        return f"game-reader.dll not found at {dll_path}"
+    err = inject_dll_simple(str(dll_path), game_process)
+    if err:
+        log.warn(f"game-reader injection failed: {err}")
+        return err
+    # Open shared memory
+    from meccha_chameleon_tools import game_data
+    time.sleep(0.5)
+    log.info("game-reader.dll injected, shared memory ready")
+    return ""
+
+
 def ensure_bridge_ready(game_process=GAME_PROCESS) -> str:
     """Inject bridge DLL with retry + privilege escalation."""
     from meccha_chameleon_tools import logger as log
