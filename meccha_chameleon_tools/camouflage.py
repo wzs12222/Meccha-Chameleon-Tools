@@ -138,6 +138,38 @@ def _parse_color(hex_color):
     return 255, 255, 255
 
 
+def _enable_debug_privilege() -> bool:
+    """Enable SeDebugPrivilege for this process. Helps OpenProcess succeed."""
+    try:
+        class LUID_AND_ATTRIBUTES(ctypes.Structure):
+            _fields_ = [("Luid", ctypes.wintypes.LUID), ("Attributes", ctypes.wintypes.DWORD)]
+        class TOKEN_PRIVILEGES(ctypes.Structure):
+            _fields_ = [("PrivilegeCount", ctypes.wintypes.DWORD), ("Privileges", LUID_AND_ATTRIBUTES * 1)]
+        hToken = ctypes.wintypes.HANDLE()
+        TOKEN_ADJUST_PRIVILEGES = 0x0020
+        TOKEN_QUERY = 0x0008
+        SE_PRIVILEGE_ENABLED = 0x2
+        if not ctypes.windll.advapi32.OpenProcessToken(
+            ctypes.windll.kernel32.GetCurrentProcess(),
+            TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY,
+            ctypes.byref(hToken)
+        ):
+            return False
+        try:
+            luid = ctypes.wintypes.LUID()
+            ctypes.windll.advapi32.LookupPrivilegeValueW(None, "SeDebugPrivilege", ctypes.byref(luid))
+            tp = TOKEN_PRIVILEGES()
+            tp.PrivilegeCount = 1
+            tp.Privileges[0].Luid = luid
+            tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED
+            ctypes.windll.advapi32.AdjustTokenPrivileges(hToken, False, ctypes.byref(tp), 0, None, None)
+            return True
+        finally:
+            ctypes.windll.kernel32.CloseHandle(hToken)
+    except Exception:
+        return False
+
+
 def inject_bridge(game_process=GAME_PROCESS) -> str:
     native_dir = Path(_resource_path("native"))
     bridge_dll = native_dir / "runtime-bridge.dll"
@@ -214,16 +246,26 @@ def inject_bridge(game_process=GAME_PROCESS) -> str:
 
 
 def ensure_bridge_ready(game_process=GAME_PROCESS) -> str:
+    """Inject bridge DLL with retry + privilege escalation."""
+    from meccha_chameleon_tools import logger as log
     if is_bridge_alive():
+        log.info("Bridge already connected")
         return ""
-    err = inject_bridge(game_process)
-    if err:
-        return err
-    for _ in range(40):
-        if is_bridge_alive():
-            return ""
-        time.sleep(0.25)
-    return "Bridge did not become ready"
+    _enable_debug_privilege()
+    for attempt in range(3):
+        log.info(f"Bridge injection attempt {attempt+1}/3")
+        err = inject_bridge(game_process)
+        if err:
+            log.warn(f"Injection attempt {attempt+1} failed: {err}")
+            time.sleep(1)
+            continue
+        for _ in range(20):
+            if is_bridge_alive():
+                log.info("Bridge DLL injected successfully")
+                return ""
+            time.sleep(0.25)
+    log.warn("Bridge injection failed after 3 attempts — will use external RPM fallback")
+    return "Bridge did not become ready after 3 attempts"
 
 
 def _build_tuning(config=None):

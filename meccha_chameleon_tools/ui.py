@@ -424,7 +424,7 @@ class Menu(QWidget):
         super().__init__()
         self.config = config
         self.esp = esp
-        self._active_tabs = tabs or ["ESP", "HEALTH", "VISUAL", "RADAR", "AIMBOT", "PLAYER", "CAMOUFLAGE", "DEBUG"]
+        self._active_tabs = tabs or ["ESP", "HEALTH", "VISUAL", "RADAR", "AIMBOT", "PLAYER", "CAMOUFLAGE", "MONITOR"]
         self.setWindowTitle("Meccha Chameleon Tools")
         self.setWindowFlags(
             Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint | Qt.Tool
@@ -644,8 +644,8 @@ class Menu(QWidget):
             self._build_player_tab()
         if "CAMOUFLAGE" in self._active_tabs:
             self._build_camouflage_tab()
-        if "DEBUG" in self._active_tabs:
-            self._build_debug_tab()
+        if "MONITOR" in self._active_tabs:
+            self._build_monitor_tab()
 
     def _switch_tab(self, idx):
         if 0 <= idx < len(self._active_tabs):
@@ -1039,12 +1039,16 @@ class Menu(QWidget):
             self.lbl_bridge_status.setText("Bridge: Disconnected")
             self.lbl_bridge_status.setStyleSheet("color: #f88; font-size: 10px;")
 
-    def _build_debug_tab(self):
-        p = self._pages["DEBUG"]
+    def _build_monitor_tab(self):
+        p = self._pages["MONITOR"]
         lo = QVBoxLayout(p)
         lo.setContentsMargins(8, 8, 8, 8)
-        lo.setSpacing(6)
+        lo.setSpacing(4)
+
         from meccha_chameleon_tools import logger as log
+
+        # Debug toggle + log folder row
+        top = QHBoxLayout()
         self.cb_debug = QCheckBox(_tr("Debug Logging"))
         self.cb_debug.setChecked(False)
         def _toggle_debug(checked):
@@ -1054,45 +1058,112 @@ class Menu(QWidget):
                     try:
                         sys.stdout = open("CONOUT$", "w", encoding="utf-8")
                         sys.stderr = open("CONOUT$", "w", encoding="utf-8")
-                    except Exception as _e:
-                        log.debug(f"{_e}")
+                    except Exception:
+                        pass
                 print("[Meccha Chameleon Tools] Debug logging enabled")
             else:
                 log.disable()
         self.cb_debug.toggled.connect(_toggle_debug)
-        lo.addWidget(self.cb_debug)
-        from meccha_chameleon_tools.core import _USE_CORE
-        self.lbl_dll = QLabel("meccha-core.dll: " + ("LOADED" if _USE_CORE else "FAILED"))
-        self.lbl_dll.setStyleSheet("color: #8f8; font-size: 10px;" if _USE_CORE else "color: #f88; font-size: 10px;")
-        lo.addWidget(self.lbl_dll)
-        self.lbl_log_path = QLabel(log.get_log_dir())
-        self.lbl_log_path.setStyleSheet("color: #8ab4f8; font-size: 9px;")
-        lo.addWidget(self.lbl_log_path)
+        top.addWidget(self.cb_debug)
         btn_open_log = QPushButton(_tr("Open Log Folder"))
         btn_open_log.clicked.connect(lambda: os.startfile(log.get_log_dir()))
-        btn_open_log.setStyleSheet("QPushButton { background-color: #22223a; color: #ccc; border: 1px solid #33334a; padding: 4px 10px; border-radius: 4px; } QPushButton:hover { background-color: #2e2e4a; }")
-        lo.addWidget(btn_open_log)
-        self.debug_info = QLabel("")
-        self.debug_info.setStyleSheet("color: #aaa; font-size: 9px; font-family: Consolas;")
-        self.debug_info.setWordWrap(True)
-        lo.addWidget(self.debug_info)
-        self._debug_refresh_timer = QTimer(self)
-        self._debug_refresh_timer.timeout.connect(self._refresh_debug)
-        self._debug_refresh_timer.start(2000)
+        btn_open_log.setStyleSheet("QPushButton { background-color: #22223a; color: #ccc; border: 1px solid #33334a; padding: 2px 8px; border-radius: 3px; font-size: 9px; } QPushButton:hover { background-color: #2e2e4a; }")
+        top.addWidget(btn_open_log)
+        lo.addLayout(top)
+
+        # Channel chain section
+        lbl_chain = QLabel(_tr("DATA CHANNEL CHAIN"))
+        lbl_chain.setStyleSheet("font-size: 11px; font-weight: bold; color: #8ab4f8;")
+        lo.addWidget(lbl_chain)
+
+        self.lbl_bridge_status = QLabel("BRIDGE: checking...")
+        self.lbl_bridge_status.setStyleSheet("color: #aaa; font-size: 10px; font-family: Consolas;")
+        lo.addWidget(self.lbl_bridge_status)
+
+        self.lbl_rpm_status = QLabel("RPM: checking...")
+        self.lbl_rpm_status.setStyleSheet("color: #aaa; font-size: 10px; font-family: Consolas;")
+        lo.addWidget(self.lbl_rpm_status)
+
+        self.lbl_active_ch = QLabel("ACTIVE: checking...")
+        self.lbl_active_ch.setStyleSheet("color: #ff0; font-size: 10px; font-family: Consolas;")
+        lo.addWidget(self.lbl_active_ch)
+
+        # Game data section
+        lbl_game = QLabel(_tr("GAME DATA"))
+        lbl_game.setStyleSheet("font-size: 11px; font-weight: bold; color: #8ab4f8; margin-top: 6px;")
+        lo.addWidget(lbl_game)
+
+        self.lbl_reader = QLabel("")
+        self.lbl_reader.setStyleSheet("color: #aaa; font-size: 10px; font-family: Consolas;")
+        lo.addWidget(self.lbl_reader)
+
+        self.lbl_camera = QLabel("")
+        self.lbl_camera.setStyleSheet("color: #aaa; font-size: 10px; font-family: Consolas;")
+        lo.addWidget(self.lbl_camera)
+
+        # Performance section
+        lbl_perf = QLabel(_tr("PERFORMANCE"))
+        lbl_perf.setStyleSheet("font-size: 11px; font-weight: bold; color: #8ab4f8; margin-top: 6px;")
+        lo.addWidget(lbl_perf)
+
+        self.lbl_perf_info = QLabel("")
+        self.lbl_perf_info.setStyleSheet("color: #aaa; font-size: 10px; font-family: Consolas;")
+        lo.addWidget(self.lbl_perf_info)
+
+        # Core DLL section
+        lbl_dll = QLabel(_tr("CORE DLL"))
+        lbl_dll.setStyleSheet("font-size: 11px; font-weight: bold; color: #8ab4f8; margin-top: 6px;")
+        lo.addWidget(lbl_dll)
+
+        from meccha_chameleon_tools.core import _USE_CORE
+        self.lbl_core_dll = QLabel("meccha-core.dll: " + ("LOADED" if _USE_CORE else "FAILED"))
+        self.lbl_core_dll.setStyleSheet("color: #8f8; font-size: 10px; font-family: Consolas;" if _USE_CORE else "color: #f88; font-size: 10px; font-family: Consolas;")
+        lo.addWidget(self.lbl_core_dll)
+
+        # Log path
+        self.lbl_log_path = QLabel(log.get_log_dir())
+        self.lbl_log_path.setStyleSheet("color: #555; font-size: 8px;")
+        lo.addWidget(self.lbl_log_path)
+
+        self._monitor_timer = QTimer(self)
+        self._monitor_timer.timeout.connect(self._refresh_monitor)
+        self._monitor_timer.start(2000)
         lo.addStretch()
 
-    def _refresh_debug(self):
-        d = debug_stats.copy()
+    def _refresh_monitor(self):
+        from meccha_chameleon_tools.channels import get_status, get_active, is_bridge_available
         from meccha_chameleon_tools.core import _USE_CORE
-        lines = [
-            f"Core DLL:      {'OK' if _USE_CORE else 'FAIL'}",
-            f"Process alive: {d['process_alive']}",
-            f"Attached:      {d['attached']}",
-            f"Players:       {d['players_cached']} ({d['hunters']}H / {d['survivors']}S)",
-            f"Reader fails:  {d['reader_failures']}",
-            f"ESP FPS:       {d['esp_fps']}",
-        ]
-        self.debug_info.setText("\n".join(lines))
+        from meccha_chameleon_tools.camouflage import is_bridge_alive
+
+        # Channel chain
+        bridge_alive = is_bridge_alive()
+        bridge_color = "#8f8" if bridge_alive else "#f88"
+        bridge_text = "CONNECTED" if bridge_alive else "DISCONNECTED"
+        self.lbl_bridge_status.setText(f"BRIDGE (injected DLL): {bridge_text}")
+        self.lbl_bridge_status.setStyleSheet(f"color: {bridge_color}; font-size: 10px; font-family: Consolas;")
+
+        rpm_color = "#8f8" if _USE_CORE else "#f88"
+        rpm_text = "STANDBY" if _USE_CORE else "UNAVAILABLE"
+        self.lbl_rpm_status.setText(f"RPM (meccha-core.dll):   {rpm_text}")
+        self.lbl_rpm_status.setStyleSheet(f"color: {rpm_color}; font-size: 10px; font-family: Consolas;")
+
+        active = get_active()
+        active_name = {"bridge": "BRIDGE (shared memory)", "rpm": "RPM (ReadProcessMemory)", "none": "NONE"}.get(active.value, active.value)
+        active_color = {"bridge": "#8f8", "rpm": "#ff0", "none": "#f88"}.get(active.value, "#aaa")
+        self.lbl_active_ch.setText(f"ACTIVE CHANNEL: {active_name}")
+        self.lbl_active_ch.setStyleSheet(f"color: {active_color}; font-size: 10px; font-family: Consolas; font-weight: bold;")
+
+        # Game data
+        d = debug_stats.copy()
+        self.lbl_reader.setText(f"Players: {d['players_cached']} ({d['hunters']}H / {d['survivors']}S)  |  Reader fails: {d['reader_failures']}  |  Attached: {d['attached']}")
+
+        # Performance
+        self.lbl_perf_info.setText(f"ESP FPS setting: {d['esp_fps']}  |  Process alive: {d['process_alive']}")
+
+        # Auto-select channel
+        if bridge_alive:
+            from meccha_chameleon_tools.channels import try_switch_to, ChannelType
+            try_switch_to(ChannelType.BRIDGE)
 
     def _on_paint_now(self):
         self.lbl_camo_status.setText("Painting...")
