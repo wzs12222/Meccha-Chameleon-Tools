@@ -33,6 +33,15 @@ from meccha_chameleon_tools import logger as log
 
 
 # ---------------------------------------------------------------------------
+# Shared debug stats (updated by Overlay, read by Menu debug tab)
+# ---------------------------------------------------------------------------
+debug_stats = {
+    "process_alive": False, "reader_failures": 0,
+    "players_cached": 0, "hunters": 0, "survivors": 0,
+    "esp_fps": 30, "attached": False, "camera_ok": False,
+}
+
+# ---------------------------------------------------------------------------
 # Math helpers
 # ---------------------------------------------------------------------------
 def rotation_to_axes(rot):
@@ -1040,29 +1049,21 @@ class Menu(QWidget):
         def _toggle_debug(checked):
             if checked:
                 log.enable()
-                if not ctypes.windll.kernel32.AllocConsole():
-                    pass
-                try:
-                    sys.stdout = open("CONOUT$", "w", encoding="utf-8")
-                    sys.stderr = open("CONOUT$", "w", encoding="utf-8")
-                except Exception:
-                    pass
+                if ctypes.windll.kernel32.AllocConsole():
+                    try:
+                        sys.stdout = open("CONOUT$", "w", encoding="utf-8")
+                        sys.stderr = open("CONOUT$", "w", encoding="utf-8")
+                    except Exception:
+                        pass
                 print("[Meccha Chameleon Tools] Debug logging enabled")
             else:
                 log.disable()
         self.cb_debug.toggled.connect(_toggle_debug)
         lo.addWidget(self.cb_debug)
-        self.lbl_dll_status = QLabel()
         from meccha_chameleon_tools.core import _USE_CORE
-        if _USE_CORE:
-            self.lbl_dll_status.setText("meccha-core.dll: LOADED")
-            self.lbl_dll_status.setStyleSheet("color: #8f8; font-size: 10px;")
-        else:
-            self.lbl_dll_status.setText("meccha-core.dll: NOT AVAILABLE (tool will not function)")
-            self.lbl_dll_status.setStyleSheet("color: #f88; font-size: 10px;")
-        lo.addWidget(self.lbl_dll_status)
-        self.lbl_log_dir = QLabel(_tr("Log Directory:"))
-        lo.addWidget(self.lbl_log_dir)
+        self.lbl_dll = QLabel("meccha-core.dll: " + ("LOADED" if _USE_CORE else "FAILED"))
+        self.lbl_dll.setStyleSheet("color: #8f8; font-size: 10px;" if _USE_CORE else "color: #f88; font-size: 10px;")
+        lo.addWidget(self.lbl_dll)
         self.lbl_log_path = QLabel(log.get_log_dir())
         self.lbl_log_path.setStyleSheet("color: #8ab4f8; font-size: 9px;")
         lo.addWidget(self.lbl_log_path)
@@ -1070,7 +1071,27 @@ class Menu(QWidget):
         btn_open_log.clicked.connect(lambda: os.startfile(log.get_log_dir()))
         btn_open_log.setStyleSheet("QPushButton { background-color: #22223a; color: #ccc; border: 1px solid #33334a; padding: 4px 10px; border-radius: 4px; } QPushButton:hover { background-color: #2e2e4a; }")
         lo.addWidget(btn_open_log)
+        self.debug_info = QLabel("")
+        self.debug_info.setStyleSheet("color: #aaa; font-size: 9px; font-family: Consolas;")
+        self.debug_info.setWordWrap(True)
+        lo.addWidget(self.debug_info)
+        self._debug_refresh_timer = QTimer(self)
+        self._debug_refresh_timer.timeout.connect(self._refresh_debug)
+        self._debug_refresh_timer.start(2000)
         lo.addStretch()
+
+    def _refresh_debug(self):
+        d = debug_stats.copy()
+        from meccha_chameleon_tools.core import _USE_CORE
+        lines = [
+            f"Core DLL:      {'OK' if _USE_CORE else 'FAIL'}",
+            f"Process alive: {d['process_alive']}",
+            f"Attached:      {d['attached']}",
+            f"Players:       {d['players_cached']} ({d['hunters']}H / {d['survivors']}S)",
+            f"Reader fails:  {d['reader_failures']}",
+            f"ESP FPS:       {d['esp_fps']}",
+        ]
+        self.debug_info.setText("\n".join(lines))
 
     def _on_paint_now(self):
         self.lbl_camo_status.setText("Painting...")
@@ -1268,6 +1289,7 @@ class Overlay(QWidget):
         self._reader_running = True
         self._reader_thread = threading.Thread(target=self._reader_loop, daemon=True)
         self._reader_thread.start()
+        debug_stats["esp_fps"] = self.config.esp_fps
         # Terrain cache disabled (not functional)
         # self._terrain_cache = None
         # self._last_terrain_time = 0.0
@@ -1297,7 +1319,10 @@ class Overlay(QWidget):
     def _find_game_window(self):
         try:
             import win32gui
-            return win32gui.FindWindow(None, "Chameleon  ")
+            hwnd = win32gui.FindWindow(None, "Chameleon  ")
+            if not hwnd:
+                hwnd = win32gui.FindWindow(None, "Chameleon")
+            return hwnd
         except Exception:
             return 0
 
@@ -1339,9 +1364,16 @@ class Overlay(QWidget):
 
     def _reader_loop(self):
         fail_count = 0
+        alive_check_interval = 0
         while getattr(self, '_reader_running', False):
             try:
-                if self.config and self.config.enabled and self.esp and self.esp.is_process_alive():
+                alive_check_interval += 1
+                alive = True
+                if self.esp and (alive_check_interval % 10 == 0 or not getattr(self, '_last_alive', True)):
+                    alive = self.esp.is_process_alive()
+                    self._last_alive = alive
+                    debug_stats["process_alive"] = alive
+                if self.config and self.config.enabled and self.esp and alive:
                     cam = self.esp.get_camera()
                     if cam is not None:
                         players = list(self.esp.iter_players(
@@ -1357,10 +1389,13 @@ class Overlay(QWidget):
                             self._cached_cam = cam
                             self._cached_players = players
                         fail_count = 0
-                        if len(players) > 0:
-                            n_h = sum(1 for p in players if p.get("is_hunter"))
-                            n_s = sum(1 for p in players if p.get("is_survivor"))
-                            log.debug(f"Reader: {len(players)} players ({n_h} hunters, {n_s} survivors)")
+                        n_h = sum(1 for p in players if p.get("is_hunter"))
+                        n_s = sum(1 for p in players if p.get("is_survivor"))
+                        debug_stats.update({
+                            "players_cached": len(players), "hunters": n_h, "survivors": n_s,
+                            "reader_failures": 0, "attached": True,
+                        })
+                        log.debug(f"Reader: {len(players)} players ({n_h} hunters, {n_s} survivors)")
                 elif self.esp is None:
                     self._try_attach()
                 else:
@@ -1376,6 +1411,7 @@ class Overlay(QWidget):
                     fail_count = 0
             except Exception as e:
                 fail_count += 1
+                debug_stats["reader_failures"] = fail_count
                 if fail_count >= 30:
                     log.warn(f"Reader loop: {fail_count} consecutive failures, clearing cache")
                     with self._cache_lock:
@@ -1412,7 +1448,8 @@ class Overlay(QWidget):
         stop_vk = vk_from_name(self.config.stop_hotkey)
         stop_down = bool(ctypes.windll.user32.GetAsyncKeyState(stop_vk) & 0x8000)
         if stop_down and not self._key_states.get("camo_stop"):
-            stop_paint()
+            import threading
+            threading.Thread(target=stop_paint, daemon=True).start()
         self._key_states["camo_stop"] = stop_down
         end_down = bool(ctypes.windll.user32.GetAsyncKeyState(VK_END) & 0x8000)
         if end_down and not self._key_states.get("end"):
