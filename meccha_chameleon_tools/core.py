@@ -148,8 +148,8 @@ class PatternScanner:
                             self.base = ctypes.c_uint64.from_buffer(me, 264).value
                             self.size = ctypes.c_uint32.from_buffer(me, 272).value
                     ctypes.windll.kernel32.CloseHandle(snap)
-        except Exception:
-            pass
+        except Exception as _e:
+            log.debug(f"PatternScanner module query: {_e}")
         if not self.base:
             raise RuntimeError(f"Module {module_name} not found")
 
@@ -237,8 +237,8 @@ class FNameResolver:
             name = self._read_entry(entry_id, self.block_table_off, self.header_style)
             if name is not None:
                 return name
-        except Exception:
-            pass
+        except Exception as _ce:
+            log.debug(f"core: {_ce}")
         for off in self.BLOCK_TABLE_OFFSETS:
             for style in ("custom", "ue5", "ue4"):
                 if off == self.block_table_off and style == self.header_style:
@@ -684,8 +684,8 @@ class MecchaESP:
                 if "survivor" in pn:
                     return "Survivor", False, True
                 cls = self.objects.get_super(cls)
-        except Exception:
-            pass
+        except Exception as _ce:
+            log.debug(f"core: {_ce}")
         return "Unknown", False, False
 
     def get_invincible(self, actor):
@@ -697,8 +697,8 @@ class MecchaESP:
             inv = ru32(self.pm, actor + 0x1D8)
             if inv == 1:
                 return True
-        except Exception:
-            pass
+        except Exception as _ce:
+            log.debug(f"core: {_ce}")
         return False
 
     def get_actor_class_canonical(self, actor):
@@ -767,16 +767,16 @@ class MecchaESP:
                     vis = ru32(self.pm, root + 0x258)
                     if vis == 0:
                         return False
-            except Exception:
-                pass
+            except Exception as _ce:
+                log.debug(f"core: {_ce}")
             try:
                 vis = ru32(self.pm, actor + self.offsets.get("AActor::bHidden", 0x178))
                 if vis == 1:
                     return False
-            except Exception:
-                pass
-        except Exception:
-            pass
+            except Exception as _ce:
+                log.debug(f"core: {_ce}")
+        except Exception as _ce:
+            log.debug(f"core: {_ce}")
         return True
 
     def _find_spectate_target(self, cam_pos, players_list):
@@ -809,8 +809,8 @@ class MecchaESP:
             local_pc = self._get_local_controller(world)
             if local_pc:
                 local_pawn = rp(self.pm, local_pc + self.offsets["APlayerController::AcknowledgedPawn"])
-        except Exception:
-            pass
+        except Exception as _ce:
+            log.debug(f"core: {_ce}")
         local_cam = self.get_camera()
         cam_pos = local_cam["loc"] if local_cam else None
         raw_players = []
@@ -854,8 +854,8 @@ class MecchaESP:
                     spec_pawn = raw_players[spec_idx][0]
                     _, ref_is_hunter, ref_is_survivor = self._detect_role(spec_pawn)
                     is_spectating = True
-        except Exception:
-            pass
+        except Exception as _ce:
+            log.debug(f"core: {_ce}")
         for i, (pawn, ps, pos) in enumerate(raw_players):
             if not include_local and pawn == local_pawn:
                 continue
@@ -990,8 +990,8 @@ class MecchaESP:
             except Exception:
                 try:
                     proc.kill()
-                except Exception:
-                    pass
+                except Exception as _ce:
+                    log.debug(f"core: {_ce}")
             self._bridge_proc = None
 
     def _ensure_bridge(self):
@@ -1071,8 +1071,8 @@ class MecchaESP:
                     user32.keybd_event(VK_F10, 0, 0, 0)
                     _t.sleep(0.05)
                     user32.keybd_event(VK_F10, 0, 2, 0)
-                except Exception:
-                    pass
+                except Exception as _ce:
+                    log.debug(f"core: {_ce}")
             if i % 16 == 15:
                 print(f"[CAMO] waiting for bridge... ({(i+1)//16}/10)")
         print("[CAMO] bridge never came alive")

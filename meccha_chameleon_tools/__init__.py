@@ -75,7 +75,8 @@ def _set_dpi_aware():
         try:
             ctypes.windll.user32.SetProcessDPIAware()
         except Exception:
-            pass
+            import meccha_chameleon_tools.logger as log
+            log.debug("SetProcessDPIAware failed")
 
 
 def _check_single_instance():
@@ -91,12 +92,12 @@ def _close_console():
     if _console:
         try:
             sys.stdout.close()
-        except Exception:
-            pass
+        except Exception as _e:
+            log.debug(f"{_e}")
         try:
             sys.stderr.close()
-        except Exception:
-            pass
+        except Exception as _e:
+            log.debug(f"{_e}")
         ctypes.windll.kernel32.FreeConsole()
         _console = False
 

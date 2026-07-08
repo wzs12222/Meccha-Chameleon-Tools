@@ -1054,8 +1054,8 @@ class Menu(QWidget):
                     try:
                         sys.stdout = open("CONOUT$", "w", encoding="utf-8")
                         sys.stderr = open("CONOUT$", "w", encoding="utf-8")
-                    except Exception:
-                        pass
+                    except Exception as _e:
+                        log.debug(f"{_e}")
                 print("[Meccha Chameleon Tools] Debug logging enabled")
             else:
                 log.disable()
@@ -1116,8 +1116,8 @@ class Menu(QWidget):
         def _do():
             try:
                 stop_paint()
-            except Exception:
-                pass
+            except Exception as _e:
+                log.debug(f"{_e}")
             QTimer.singleShot(0, lambda: self.lbl_camo_status.setText("Stopped"))
         threading.Thread(target=_do, daemon=True).start()
 
@@ -1398,13 +1398,17 @@ class Overlay(QWidget):
                         })
                         log.debug(f"Reader: {len(players)} players ({n_h} hunters, {n_s} survivors)")
                 elif self.esp is None:
-                    self._try_attach()
+                    now = time.time()
+                    last = getattr(self, '_last_attach_attempt', 0.0)
+                    if now - last > 1.0:
+                        self._last_attach_attempt = now
+                        self._try_attach()
                 else:
                     log.info("Game process lost — cleaning up for re-attach")
                     try:
                         self.esp.cleanup()
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        log.warn(f"Cleanup error: {e}")
                     with self._cache_lock:
                         self.esp = None
                         self._cached_cam = None
@@ -1701,8 +1705,8 @@ class Overlay(QWidget):
                     if self.config.draw_all_names:
                         cname = adata["class_name"][:20] if adata["class_name"] else "Actor"
                         painter.drawText(sx_a + 4, sy_a + 4, cname)
-            except Exception:
-                pass
+            except Exception as _e:
+                log.debug(f"{_e}")
             if actor_count > 0:
                 painter.setPen(QPen(QColor(150, 255, 150)))
                 painter.drawText(w - 200, 60, _tr("Items: {count}", count=actor_count))
