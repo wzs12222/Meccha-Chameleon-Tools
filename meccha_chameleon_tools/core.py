@@ -288,6 +288,12 @@ class UObjectArray:
         cls = self.obj_class(obj)
         return self.obj_name(cls) if cls else ""
 
+    def get_super(self, cls_addr):
+        """Return the SuperStruct (parent class) address, or 0."""
+        if not cls_addr:
+            return 0
+        return rp(self.pm, cls_addr + 0x40)
+
     def iter_objects(self):
         ptr = rp(self.pm, self.guobject_array + 0x10)
         if not ptr:
@@ -650,7 +656,8 @@ class MecchaESP:
         return origin, extent, radius
 
     def _detect_role(self, pawn):
-        """Return ('Hunter', True, False) or ('Survivor', False, True) or ('Unknown', False, False)."""
+        """Return ('Hunter', True, False) or ('Survivor', False, True) or ('Unknown', False, False).
+        Checks direct class name first, then walks parent classes."""
         try:
             name = self.objects.class_name(pawn) or ""
             name_lower = name.lower()
@@ -658,6 +665,18 @@ class MecchaESP:
                 return "Hunter", True, False
             if "survivor" in name_lower:
                 return "Survivor", False, True
+            # Fallback: walk parent class hierarchy
+            cls = self.objects.obj_class(pawn)
+            visited = set()
+            while cls and cls not in visited:
+                visited.add(cls)
+                parent_name = self.objects.class_name(cls) or ""
+                pn = parent_name.lower()
+                if "hunter" in pn:
+                    return "Hunter", True, False
+                if "survivor" in pn:
+                    return "Survivor", False, True
+                cls = self.objects.get_super(cls)
         except Exception:
             pass
         return "Unknown", False, False
