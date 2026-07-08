@@ -126,7 +126,7 @@ def dist_2d(a, b):
 # Pattern scanner
 # ---------------------------------------------------------------------------
 class PatternScanner:
-    CHUNK_SIZE = 0x200000
+    CHUNK_SIZE = 0x800000  # 8MB chunks for faster scanning
 
     def __init__(self, pm, module_name):
         self.pm = pm
