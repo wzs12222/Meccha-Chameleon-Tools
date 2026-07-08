@@ -481,6 +481,12 @@ class MecchaESP:
     SHIELD_PROP_NAMES = ("Shield", "Armor", "ShieldHealth", "ExtraHealth", "ArmorHealth")
 
     def __init__(self):
+        global _USE_CORE
+        if not _USE_CORE:
+            from meccha_chameleon_tools.memory_engine import init as _mc_init
+            _USE_CORE = _mc_init()
+        if not _USE_CORE:
+            raise RuntimeError("meccha-core.dll: game process not found")
         self.pm = self._make_pm()
         self.guobject_array = self._scan_guobject_array()
         if not self.guobject_array:
