@@ -670,7 +670,7 @@ class MecchaESP:
             visited = set()
             while cls and cls not in visited:
                 visited.add(cls)
-                parent_name = self.objects.class_name(cls) or ""
+                parent_name = self.objects.obj_name(cls) or ""
                 pn = parent_name.lower()
                 if "hunter" in pn:
                     return "Hunter", True, False

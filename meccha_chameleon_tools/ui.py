@@ -1464,6 +1464,9 @@ class Overlay(QWidget):
             is_local = p["is_local"]
             pi_h = p.get("is_hunter", False)
             pi_s = p.get("is_survivor", False)
+            # Ghost: non-local player with no role when local player has a role reference
+            if not is_local and not pi_h and not pi_s and local_has_role:
+                continue
             if is_local and self.config.filter_hide_self:
                 continue
             if not local_has_role:
@@ -1496,10 +1499,8 @@ class Overlay(QWidget):
 
             is_hunter = pdata.get("is_hunter", False)
             is_survivor = pdata.get("is_survivor", False)
-            # Player with no detectable role in a game where roles exist → treat as unknown
-            has_no_role = not is_hunter and not is_survivor and role_detection_ok and not is_local
-            is_unknown = (not role_detection_ok and not is_local and not is_enemy) or has_no_role
-            if not is_local and local_has_role and not has_no_role:
+            is_unknown = not role_detection_ok and not is_local and not is_enemy
+            if not is_local and local_has_role:
                 if is_hunter and not self.config.hunter_esp:
                     continue
                 if is_survivor and not self.config.survivor_esp:
