@@ -147,19 +147,18 @@ class PatternScanner:
                 raise RuntimeError("CreateToolhelp32Snapshot failed")
             try:
                 if windll.kernel32.Module32FirstW(snap, byref(buf)):
-                    # szModule is at offset 40 (after dwSize+th32ModuleID+th32ProcessID+GlblcntUsage+ProccntUsage + padding + modBaseAddr + modBaseSize + hModule)
-                    # modBaseAddr at offset 24, modBaseSize at offset 32
+                    # modBaseAddr at offset 24, modBaseSize at offset 32, szModule at offset 48
                     mod_base = c_uint64.from_buffer(buf, 24).value
                     mod_size = c_uint32.from_buffer(buf, 32).value
-                    # Read module name at offset 40 (szModule, WCHAR array of 256)
-                    name_chars = (c_wchar * 256).from_buffer(buf, 40)
+                    # Read module name at offset 48 (szModule, WCHAR array of 256)
+                    name_chars = (c_wchar * 256).from_buffer(buf, 48)
                     name = ''.join(name_chars).split('\x00')[0].lower()
                     if module_name.lower() in name:
                         self.base = mod_base
                         self.size = mod_size
                     else:
-                        # Try szExePath as fallback at offset 552
-                        path_chars = (c_wchar * 260).from_buffer(buf, 552)
+                        # Try szExePath as fallback at offset 560
+                        path_chars = (c_wchar * 260).from_buffer(buf, 560)
                         path = ''.join(path_chars).split('\x00')[0].lower()
                         if module_name.lower() in path:
                             self.base = mod_base
@@ -498,14 +497,8 @@ class MecchaESP:
     HEALTH_PROP_NAMES = ("Health", "CurrentHealth", "HP", "HealthPoints", "HitPoints")
     SHIELD_PROP_NAMES = ("Shield", "Armor", "ShieldHealth", "ExtraHealth", "ArmorHealth")
 
-    def __init__(self):
-        global _USE_CORE
-        if not _USE_CORE:
-            from meccha_chameleon_tools.memory_engine import init as _mc_init
-            _USE_CORE = _mc_init()
-        if not _USE_CORE:
-            raise RuntimeError("meccha-core.dll: game process not found")
-        self.pm = self._make_pm()
+    def _init_full(self):
+        """Run full init (pattern scans, offset resolution). Called once."""
         self.guobject_array = self._scan_guobject_array()
         if not self.guobject_array:
             raise RuntimeError("Could not find GUObjectArray via pattern scan")
@@ -527,12 +520,23 @@ class MecchaESP:
         self._health_offsets = None
         self._shield_offsets = None
         self._bone_cache = {}
-        # Pymem 1.14 compatibility aliases
-        self.read_u64 = self.pm.read_longlong
-        self.read_u32 = self.pm.read_ulong
-        self.read_u16 = lambda a: struct.unpack("<H", self.pm.read_bytes(a, 2))[0]
-        self.read_float = lambda a: struct.unpack("<f", self.pm.read_bytes(a, 4))[0]
-        self.write_u64 = lambda a, v: self.pm.write_bytes(a, struct.pack("<Q", v), 8)
+
+    def __init__(self, lazy=False):
+        global _USE_CORE
+        if not _USE_CORE:
+            from meccha_chameleon_tools.memory_engine import init as _mc_init
+            _USE_CORE = _mc_init()
+        if not _USE_CORE:
+            raise RuntimeError("meccha-core.dll: game process not found")
+        self.pm = self._make_pm()
+        self.objects = None
+        self.offsets = {}
+        self.gengine = 0
+        self._health_offsets = None
+        self._shield_offsets = None
+        self._bone_cache = {}
+        if not lazy:
+            self._init_full()
 
     def _make_pm(self):
         """Create a pymem-compatible process handle wrapper using the C++ DLL."""

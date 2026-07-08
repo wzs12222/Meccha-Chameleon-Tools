@@ -1350,12 +1350,21 @@ class Overlay(QWidget):
 
     def _try_attach(self):
         if self.esp is not None:
+            if getattr(self.esp, 'objects', None) is None:
+                # ESP exists but not fully initialized — complete init in background
+                try:
+                    self.esp._init_full()
+                    log.info("ESP fully initialized (pattern scans complete)")
+                except Exception as e:
+                    log.warn(f"ESP full init failed: {e}")
+                    self.esp = None
             return
         try:
             from meccha_chameleon_tools.core import MecchaESP
             log.info("Attempting game attach...")
-            self.esp = MecchaESP()
-            log.info("Game attached successfully")
+            self.esp = MecchaESP(lazy=True)
+            log.info("Game attached (process handle opened)")
+            # Full init will happen on next _try_attach tick
         except Exception as e:
             log.warn(f"Game attach failed: {e}")
 
@@ -1370,11 +1379,12 @@ class Overlay(QWidget):
             try:
                 alive_check_interval += 1
                 alive = True
+                esp_ready = self.esp is not None and getattr(self.esp, 'objects', None) is not None
                 if self.esp and (alive_check_interval % 10 == 0 or not getattr(self, '_last_alive', True)):
                     alive = self.esp.is_process_alive()
                     self._last_alive = alive
                     debug_stats["process_alive"] = alive
-                if self.config and self.config.enabled and self.esp and alive:
+                if self.config and self.config.enabled and esp_ready and alive:
                     cam = self.esp.get_camera()
                     if cam is not None:
                         players = list(self.esp.iter_players(
