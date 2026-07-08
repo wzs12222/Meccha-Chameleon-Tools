@@ -1036,26 +1036,40 @@ class Menu(QWidget):
         lo.setSpacing(6)
         from meccha_chameleon_tools import logger as log
         self.cb_debug = QCheckBox(_tr("Debug Logging"))
-        self.cb_debug.setChecked(self.config.language == "EN")
+        self.cb_debug.setChecked(False)
         def _toggle_debug(checked):
             if checked:
                 log.enable()
+                if not ctypes.windll.kernel32.AllocConsole():
+                    pass
+                try:
+                    sys.stdout = open("CONOUT$", "w", encoding="utf-8")
+                    sys.stderr = open("CONOUT$", "w", encoding="utf-8")
+                except Exception:
+                    pass
+                print("[Meccha Chameleon Tools] Debug logging enabled")
             else:
                 log.disable()
         self.cb_debug.toggled.connect(_toggle_debug)
         lo.addWidget(self.cb_debug)
         self.lbl_dll_status = QLabel()
-        try:
-            from meccha_chameleon_tools.core import _USE_CORE
-            if _USE_CORE:
-                self.lbl_dll_status.setText("meccha-core.dll: LOADED")
-                self.lbl_dll_status.setStyleSheet("color: #8f8; font-size: 10px;")
-            else:
-                self.lbl_dll_status.setText("meccha-core.dll: NOT LOADED (using pymem)")
-                self.lbl_dll_status.setStyleSheet("color: #f88; font-size: 10px;")
-        except Exception:
-            self.lbl_dll_status.setText("meccha-core.dll: UNKNOWN")
+        from meccha_chameleon_tools.core import _USE_CORE
+        if _USE_CORE:
+            self.lbl_dll_status.setText("meccha-core.dll: LOADED")
+            self.lbl_dll_status.setStyleSheet("color: #8f8; font-size: 10px;")
+        else:
+            self.lbl_dll_status.setText("meccha-core.dll: NOT AVAILABLE (tool will not function)")
+            self.lbl_dll_status.setStyleSheet("color: #f88; font-size: 10px;")
         lo.addWidget(self.lbl_dll_status)
+        self.lbl_log_dir = QLabel(_tr("Log Directory:"))
+        lo.addWidget(self.lbl_log_dir)
+        self.lbl_log_path = QLabel(log.get_log_dir())
+        self.lbl_log_path.setStyleSheet("color: #8ab4f8; font-size: 9px;")
+        lo.addWidget(self.lbl_log_path)
+        btn_open_log = QPushButton(_tr("Open Log Folder"))
+        btn_open_log.clicked.connect(lambda: os.startfile(log.get_log_dir()))
+        btn_open_log.setStyleSheet("QPushButton { background-color: #22223a; color: #ccc; border: 1px solid #33334a; padding: 4px 10px; border-radius: 4px; } QPushButton:hover { background-color: #2e2e4a; }")
+        lo.addWidget(btn_open_log)
         lo.addStretch()
 
     def _on_paint_now(self):

@@ -18,8 +18,28 @@ def _boot_msg(msg):
 _boot_msg("Starting Meccha Chameleon Tools...")
 _boot_msg("Loading modules...")
 
+import meccha_chameleon_tools.logger as log
+
+# Crash hooks — capture unhandled exceptions to log file
+_original_excepthook = sys.excepthook
+
+def _crash_hook(etype, value, tb):
+    import traceback
+    msg = "".join(traceback.format_exception(etype, value, tb))
+    log.crash(f"Unhandled exception:\n{msg}")
+    if _original_excepthook:
+        _original_excepthook(etype, value, tb)
+
+sys.excepthook = _crash_hook
+
 from PyQt5.QtWidgets import QApplication, QMessageBox
 from PyQt5.QtCore import QTimer
+from PyQt5.QtCore import qInstallMessageHandler
+
+def _qt_msg_handler(mode, context, msg):
+    log.crash(f"Qt {mode}: {msg}")
+
+qInstallMessageHandler(_qt_msg_handler)
 
 from meccha_chameleon_tools.core import MecchaESP
 from meccha_chameleon_tools.config import Config, load_config, save_config, CONFIG_FILE
@@ -89,11 +109,11 @@ def main():
     _boot_msg("Initializing Qt application...")
     app = QApplication(sys.argv)
 
-    import meccha_chameleon_tools.logger as log
     log.init()
-    log.info("=== MecchaCamouflage v1.9.1-wow (Python overlay mode) ===")
+    log.info("=== MecchaCamouflage v1.9.1-wow ===")
     if "--verbose" in sys.argv or "-v" in sys.argv or "--debug" in sys.argv:
         log.enable()
+        _boot_msg("Debug logging enabled.")
 
     _boot_msg("Loading configuration...")
     config = load_config()
@@ -103,12 +123,16 @@ def main():
             config.language = detected
     _tr.set_language(config.language)
 
-    _boot_msg("Connecting to game...")
+    _boot_msg("Initializing memory engine...")
     esp = None
     try:
         esp = MecchaESP()
         _boot_msg("Game connected.")
-    except Exception:
+    except RuntimeError as e:
+        log.warn(f"ESP init failed: {e}")
+        _boot_msg("Game not found — will attach in background.")
+    except Exception as e:
+        log.error(f"Unexpected error: {e}")
         _boot_msg("Game not found — will attach in background.")
 
     _boot_msg("Creating GUI...")
