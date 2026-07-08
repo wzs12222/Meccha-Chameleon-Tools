@@ -46,6 +46,7 @@ walk_krl_children.py
 *.txt
 *.tmp
 PR_SUMMARY.md
+TODO_REWRITE.md
 
 # Files removed from version control
 .gitignore
