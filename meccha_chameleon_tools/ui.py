@@ -1618,11 +1618,11 @@ class Overlay(QWidget):
             elif is_survivor:
                 role_color = self.config.survivor_visual_color
 
-            # Color resolution: absolute/relative, with observer override
-            if observer_abs:
-                color = role_color if role_color else self.config.unknown_color
-            elif local_cm == "absolute" and role_color:
+            # Color resolution: prefer role_color when detected, fallback to base
+            if role_color:
                 color = role_color
+            elif observer_abs:
+                color = self.config.unknown_color
             else:
                 color = base_color
 
