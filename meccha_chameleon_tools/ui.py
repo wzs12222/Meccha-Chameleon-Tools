@@ -1392,7 +1392,7 @@ class Overlay(QWidget):
                         players = list(self.esp.iter_players(
                             include_local=self.config.show_local,
                         ))
-                        # Delta detection: track pawn transitions (Character→Spectate)
+                        # Delta detection: track pawn transitions
                         current_pawn_map = {}
                         for p in players:
                             actor = p.get("actor")
@@ -1407,15 +1407,30 @@ class Overlay(QWidget):
                                 if prev_pawn and prev_pawn != actor:
                                     prev_class = self.esp.objects.class_name(prev_pawn) or ""
                                     new_class = self.esp.objects.class_name(actor) or ""
-                                    if "firstpersoncharacter" in prev_class.lower() and "spectate" in new_class.lower():
+                                    prev_lower = prev_class.lower()
+                                    new_lower = new_class.lower()
+                                    # Character → Spectate: save original body
+                                    if "firstpersoncharacter" in prev_lower and "spectate" in new_lower:
                                         prev_pos = self.esp.get_actor_root_pos(prev_pawn)
                                         if prev_pos:
-                                            role = "Survivor" if "survivor" in prev_class.lower() else "Hunter"
+                                            role = "Survivor" if "survivor" in prev_lower else "Hunter"
                                             self._original_pawns[ps] = {
                                                 "pos": prev_pos, "role": role,
                                                 "pawn": prev_pawn, "class": prev_class,
                                             }
-                                            log.debug(f"Captured original pawn for PS {hex(ps)}: {role} at {prev_pos}")
+                                            log.debug(f"Delta: captured body for {hex(ps)}: {role}")
+                                    # Spectate → Character: player returned, remove cache
+                                    elif "spectate" in prev_lower and "firstpersoncharacter" in new_lower:
+                                        self._original_pawns.pop(ps, None)
+                                        log.debug(f"Delta: player returned to body, removed cache for {hex(ps)}")
+                        # Clean stale entries: players no longer in game
+                        active_ps = set(current_pawn_map.keys())
+                        stale = [k for k in self._original_pawns if k not in active_ps]
+                        for k in stale:
+                            self._original_pawns.pop(k, None)
+                        # Size limit
+                        while len(self._original_pawns) > 64:
+                            self._original_pawns.pop(next(iter(self._original_pawns)))
                         self._prev_pawn_map = current_pawn_map
                         with self._cache_lock:
                             self._cached_cam = cam
