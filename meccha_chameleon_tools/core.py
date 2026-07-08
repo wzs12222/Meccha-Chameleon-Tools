@@ -133,21 +133,39 @@ class PatternScanner:
         self.base = 0
         self.size = 0
         try:
-            import ctypes
+            from ctypes import windll, byref, create_string_buffer, c_int32, c_uint64, c_uint32, c_void_p, c_wchar, addressof
             from meccha_chameleon_tools.memory_engine import pid as _mc_pid
             pid = _mc_pid()
-            if pid:
-                snap = ctypes.windll.kernel32.CreateToolhelp32Snapshot(0x00000008, pid)
-                if snap and snap != -1:
-                    me = ctypes.create_string_buffer(584)
-                    ctypes.c_int32.from_buffer(me, 0).value = 584
-                    if ctypes.windll.kernel32.Module32FirstW(snap, ctypes.byref(me)):
-                        name_bytes = me[12:12+256]
-                        name = name_bytes.split(b'\x00')[0].decode('utf-8', errors='replace').lower()
-                        if module_name.lower() in name:
-                            self.base = ctypes.c_uint64.from_buffer(me, 264).value
-                            self.size = ctypes.c_uint32.from_buffer(me, 272).value
-                    ctypes.windll.kernel32.CloseHandle(snap)
+            if not pid:
+                raise RuntimeError("no process attached")
+            # Use Win32 API properly: MODULEENTRY32W structure
+            MODULEENTRY32W_SIZE = 1080  # sizeof(MODULEENTRY32W) on x64
+            buf = create_string_buffer(MODULEENTRY32W_SIZE)
+            c_int32.from_buffer(buf, 0).value = MODULEENTRY32W_SIZE
+            snap = windll.kernel32.CreateToolhelp32Snapshot(0x00000008, pid)
+            if not snap or snap == -1:
+                raise RuntimeError("CreateToolhelp32Snapshot failed")
+            try:
+                if windll.kernel32.Module32FirstW(snap, byref(buf)):
+                    # szModule is at offset 40 (after dwSize+th32ModuleID+th32ProcessID+GlblcntUsage+ProccntUsage + padding + modBaseAddr + modBaseSize + hModule)
+                    # modBaseAddr at offset 24, modBaseSize at offset 32
+                    mod_base = c_uint64.from_buffer(buf, 24).value
+                    mod_size = c_uint32.from_buffer(buf, 32).value
+                    # Read module name at offset 40 (szModule, WCHAR array of 256)
+                    name_chars = (c_wchar * 256).from_buffer(buf, 40)
+                    name = ''.join(name_chars).split('\x00')[0].lower()
+                    if module_name.lower() in name:
+                        self.base = mod_base
+                        self.size = mod_size
+                    else:
+                        # Try szExePath as fallback at offset 552
+                        path_chars = (c_wchar * 260).from_buffer(buf, 552)
+                        path = ''.join(path_chars).split('\x00')[0].lower()
+                        if module_name.lower() in path:
+                            self.base = mod_base
+                            self.size = mod_size
+            finally:
+                windll.kernel32.CloseHandle(snap)
         except Exception as _e:
             log.debug(f"PatternScanner module query: {_e}")
         if not self.base:

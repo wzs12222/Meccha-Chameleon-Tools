@@ -1462,10 +1462,12 @@ class Overlay(QWidget):
         self._key_states["end"] = end_down
         cursor_should_be = not self.config.show_cursor
         if cursor_should_be != self._cursor_shown:
-            while ctypes.windll.user32.ShowCursor(cursor_should_be) >= 0:
-                pass
-            while ctypes.windll.user32.ShowCursor(not cursor_should_be) < 0:
-                pass
+            for _ in range(100):
+                if ctypes.windll.user32.ShowCursor(cursor_should_be) < 0:
+                    break
+            for _ in range(100):
+                if ctypes.windll.user32.ShowCursor(not cursor_should_be) >= 0:
+                    break
             ctypes.windll.user32.ShowCursor(cursor_should_be)
             self._cursor_shown = cursor_should_be
         tp_vk = vk_from_name(self.config.teleport_collectible_key)
@@ -1668,7 +1670,7 @@ class Overlay(QWidget):
                 elif observer_abs:
                     label_parts.append(_tr("Player {idx}", idx=idx))
                 elif is_unknown:
-                    pass
+                    _ = None
                 elif is_enemy:
                     label_parts.append(_tr("Enemy {idx}", idx=idx))
                 else:
