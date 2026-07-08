@@ -1562,8 +1562,10 @@ class Overlay(QWidget):
             is_local = p["is_local"]
             pi_h = p.get("is_hunter", False)
             pi_s = p.get("is_survivor", False)
-            # Ghost: non-local player with no role AND other non-local players have roles
-            if not is_local and not pi_h and not pi_s and local_has_role and non_local_has_role:
+            # Ghost: non-local player with no role, health=0, AND others have roles
+            pi_health = p.get("_health_info")
+            pi_is_dead = pi_health and pi_health[0] is not None and pi_health[0] <= 0
+            if not is_local and not pi_h and not pi_s and pi_is_dead and local_has_role and non_local_has_role:
                 continue
             if is_local and self.config.filter_hide_self:
                 continue
@@ -1817,7 +1819,9 @@ class Overlay(QWidget):
                 pi_hunter = p.get("is_hunter", False)
                 pi_survivor = p.get("is_survivor", False)
                 pi_enemy = p.get("is_enemy", False)
-                pi_ghost = not pi_hunter and not pi_survivor and role_detection_ok and non_local_has_role
+                pi_ghost_hp = p.get("_health_info")
+                pi_ghost_dead = pi_ghost_hp and pi_ghost_hp[0] is not None and pi_ghost_hp[0] <= 0
+                pi_ghost = not pi_hunter and not pi_survivor and pi_ghost_dead and role_detection_ok and non_local_has_role
                 if pi_ghost:
                     p["color"] = self.config.unknown_color
                 elif not local_has_role:
