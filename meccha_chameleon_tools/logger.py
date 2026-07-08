@@ -24,6 +24,10 @@ def enable():
     global VERBOSE
     VERBOSE = True
 
+def disable():
+    global VERBOSE
+    VERBOSE = False
+
 
 def _fmt(msg):
     return f"[{time.strftime('%H:%M:%S')}] {msg}"

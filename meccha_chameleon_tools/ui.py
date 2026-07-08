@@ -414,7 +414,7 @@ class Menu(QWidget):
         super().__init__()
         self.config = config
         self.esp = esp
-        self._active_tabs = tabs or ["ESP", "HEALTH", "VISUAL", "RADAR", "AIMBOT", "PLAYER", "CAMOUFLAGE"]
+        self._active_tabs = tabs or ["ESP", "HEALTH", "VISUAL", "RADAR", "AIMBOT", "PLAYER", "CAMOUFLAGE", "DEBUG"]
         self.setWindowTitle("Meccha Chameleon Tools")
         self.setWindowFlags(
             Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint | Qt.Tool
@@ -445,7 +445,7 @@ class Menu(QWidget):
             pp.end()
             icon = QIcon(pix)
         self.tray_icon = QSystemTrayIcon(icon, self)
-        self.tray_icon.setToolTip("Meccha Camouflage v1.9.0-wow")
+        self.tray_icon.setToolTip("Meccha Camouflage v1.9.1-wow")
         tray_menu = QMenu()
         act_toggle = tray_menu.addAction(_tr("Show/Hide Menu"))
         act_toggle.triggered.connect(lambda: self.setVisible(not self.isVisible()))
@@ -606,7 +606,7 @@ class Menu(QWidget):
         github_link = QLabel('<a href="https://github.com/SilentJMA/Meccha-Chameleon-Tools" style="color: #8ab4f8; text-decoration: none; font-size: 9px;">GitHub</a>')
         github_link.setOpenExternalLinks(True)
         github_link.setStyleSheet("font-size: 9px;")
-        release_label = QLabel("v1.9.0-wow")
+        release_label = QLabel("v1.9.1-wow")
         release_label.setStyleSheet("color: #666; font-size: 9px;")
         copyright_link = QLabel('<a href="https://github.com/SilentJMA" style="color: #888; text-decoration: none; font-size: 9px;">\u00a9 2026 SilentJMA</a>')
         copyright_link.setOpenExternalLinks(True)
@@ -634,6 +634,8 @@ class Menu(QWidget):
             self._build_player_tab()
         if "CAMOUFLAGE" in self._active_tabs:
             self._build_camouflage_tab()
+        if "DEBUG" in self._active_tabs:
+            self._build_debug_tab()
 
     def _switch_tab(self, idx):
         if 0 <= idx < len(self._active_tabs):
@@ -1027,6 +1029,35 @@ class Menu(QWidget):
             self.lbl_bridge_status.setText("Bridge: Disconnected")
             self.lbl_bridge_status.setStyleSheet("color: #f88; font-size: 10px;")
 
+    def _build_debug_tab(self):
+        p = self._pages["DEBUG"]
+        lo = QVBoxLayout(p)
+        lo.setContentsMargins(8, 8, 8, 8)
+        lo.setSpacing(6)
+        from meccha_chameleon_tools import logger as log
+        self.cb_debug = QCheckBox(_tr("Debug Logging"))
+        self.cb_debug.setChecked(self.config.language == "EN")
+        def _toggle_debug(checked):
+            if checked:
+                log.enable()
+            else:
+                log.disable()
+        self.cb_debug.toggled.connect(_toggle_debug)
+        lo.addWidget(self.cb_debug)
+        self.lbl_dll_status = QLabel()
+        try:
+            from meccha_chameleon_tools.core import _USE_CORE
+            if _USE_CORE:
+                self.lbl_dll_status.setText("meccha-core.dll: LOADED")
+                self.lbl_dll_status.setStyleSheet("color: #8f8; font-size: 10px;")
+            else:
+                self.lbl_dll_status.setText("meccha-core.dll: NOT LOADED (using pymem)")
+                self.lbl_dll_status.setStyleSheet("color: #f88; font-size: 10px;")
+        except Exception:
+            self.lbl_dll_status.setText("meccha-core.dll: UNKNOWN")
+        lo.addWidget(self.lbl_dll_status)
+        lo.addStretch()
+
     def _on_paint_now(self):
         self.lbl_camo_status.setText("Painting...")
         def _do():
@@ -1340,9 +1371,6 @@ class Overlay(QWidget):
             time.sleep(0.1)
 
     def _tick_overlay(self):
-        if self._rendering:
-            return
-        self._rendering = True
         self._resize_to_game()
         self.update()
 
@@ -1413,7 +1441,6 @@ class Overlay(QWidget):
         if not self.config.enabled:
             painter.setPen(QPen(QColor(255, 255, 255)))
             painter.drawText(10, 20, _tr("ESP OFF"))
-            self._rendering = False
             return
 
         _esp = self.esp
@@ -1422,7 +1449,6 @@ class Overlay(QWidget):
             painter.drawText(10, 20, _tr("Waiting for game..."))
             painter.setPen(QPen(QColor(100, 100, 100)))
             painter.drawText(10, 40, "Status: No Game Process")
-            self._rendering = False
             return
 
         # Camera: read synchronously for pixel-accurate projection (fast, few reads)
@@ -1439,7 +1465,6 @@ class Overlay(QWidget):
         if not cam or not cam_valid(cam):
             painter.setPen(QPen(QColor(255, 255, 255)))
             painter.drawText(10, 20, _tr("NO CAMERA"))
-            self._rendering = False
             return
 
         role_detection_ok = any(
@@ -1678,7 +1703,7 @@ class Overlay(QWidget):
                 fov = self.config.aimbot_fov
             else:
                 fov = 0
-            best_target = self._find_best_target(cam, w, h, fov if fov > 0 else None)
+            best_target = self._find_best_target(cam, w, h, fov if fov > 0 else None, all_players)
             if best_target:
                 if self.config.aimbot_show_fov and self.config.aimbot_enabled:
                     painter.setPen(QPen(QColor(255, 255, 255), 1))
@@ -1742,8 +1767,6 @@ class Overlay(QWidget):
                        self.config.radar_size, self.config.radar_range,
                        self.config.radar_color, self.config.radar_opacity)
 
-        self._rendering = False
-
     def _draw_dot(self, painter, cx, cy, r, color):
         painter.setPen(Qt.NoPen)
         painter.setBrush(QColor(*color))
@@ -1781,24 +1804,21 @@ class Overlay(QWidget):
         vk = vk_from_name(self.config.magnet_hold_key)
         return bool(ctypes.windll.user32.GetAsyncKeyState(vk) & 0x8000)
 
-    def _find_best_target(self, camera, screen_w, screen_h, fov_override=None):
-        world = self.esp._get_world()
-        local_pc = self.esp._get_local_controller(world) if world else 0
-        local_pawn = rp(self.esp.pm, local_pc + self.esp.offsets["APlayerController::AcknowledgedPawn"]) if local_pc else 0
-        local_pos = None
-        if local_pawn:
-            root = rp(self.esp.pm, local_pawn + self.esp.offsets["AActor::RootComponent"])
-            if root:
-                local_pos = rvec3(self.esp.pm, root + self.esp.offsets["USceneComponent::RelativeLocation"])
-
-        if not local_pawn:
-            return None
-        cx, cy = screen_w / 2, screen_h / 2
+    def _find_best_target(self, camera, screen_w, screen_h, fov_override=None, players=None):
+        if players is None:
+            with self._cache_lock:
+                players = list(self._cached_players)
         cam_loc = camera["loc"]
+        cx, cy = screen_w / 2, screen_h / 2
         best_dist = float("inf")
         best_target = None
-        for pdata in self.esp.iter_players(include_local=False, team_filter=self.config.team_filter):
-            if pdata["is_local"]:
+        local_pos = None
+        for p in players:
+            if p.get("is_local"):
+                local_pos = p["pos"]
+                break
+        for pdata in players:
+            if pdata.get("is_local", False):
                 continue
             pos = pdata["pos"]
             if local_pos:

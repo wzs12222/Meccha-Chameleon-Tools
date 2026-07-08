@@ -117,6 +117,8 @@ _TR = {
     "Record Key": {"DE": "Taste aufnehmen", "FR": "Enregistrer touche", "ES": "Grabar tecla", "CN": "\u5f55\u5236\u6309\u952e", "JP": "\u30ad\u30fc\u3092\u9332\u753b", "KR": "\ud0a4 \ubcc0\uacbd"},
     "Press key...": {"DE": "Taste dr\u00fccken...", "FR": "Appuyez touche...", "ES": "Presione tecla...", "CN": "\u8bf7\u6309\u952e...", "JP": "\u30ad\u30fc\u3092\u62bc\u3057\u3066\u304f\u3060\u3055\u3044...", "KR": "\ud0a4\ub97c \ub204\ub974\uc138\uc694..."},
      "Aim Key: {key}": {"DE": "Ziel-Taste: {key}", "FR": "Touche vis\u00e9e: {key}", "ES": "Tecla apuntar: {key}", "CN": "\u7784\u51c6\u952e: {key}", "JP": "\u30a8\u30a4\u30e0\u30ad\u30fc: {key}", "KR": "\uc870\uc900\ud0a4: {key}"},
+    "DEBUG": {"DE": "DEBUG", "FR": "DEBUG", "ES": "DEBUG", "CN": "\u8c03\u8bd5", "JP": "\u30c7\u30d0\u30c3\u30b0", "KR": "\ub514\ubc84\uadf8"},
+    "Debug Logging": {"DE": "Debug-Logging", "FR": "Journalisation debug", "ES": "Registro de depuraci\u00f3n", "CN": "\u8c03\u8bd5\u65e5\u5fd7", "JP": "\u30c7\u30d0\u30c3\u30b0\u30ed\u30b0", "KR": "\ub514\ubc84\uadf8 \ub85c\uadf8"},
     "CAMOUFLAGE": {"DE": "TARNUNG", "FR": "CAMOUFLAGE", "ES": "CAMUFLAJE", "CN": "\u8ff7\u5f69", "JP": "\u30ab\u30e2\u30d5\u30e9\u30fc\u30b8\u30e5", "KR": "\uc704\uc7a5"},
     "Enable Camouflage": {"DE": "Tarnung aktivieren", "FR": "Activer le camouflage", "ES": "Activar camuflaje", "CN": "\u542f\u7528\u8ff7\u5f69", "JP": "\u30ab\u30e2\u30d5\u30e9\u30fc\u30b8\u30e5\u3092\u6709\u52b9\u5316", "KR": "\uc704\uc7a5 \ud65c\uc131\ud654"},
     "Paint Now": {"DE": "Jetzt malen", "FR": "Peindre maintenant", "ES": "Pintar ahora", "CN": "\u7acb\u5373\u6d82\u88c5", "JP": "\u4eca\u3059\u3050\u63cf\u304f", "KR": "\uc9c0\uae08 \ud39c\ud2b8"},

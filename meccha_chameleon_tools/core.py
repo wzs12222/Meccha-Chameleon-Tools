@@ -47,8 +47,14 @@ try:
         read_vec3 as _mc_rv3, read_vec3_f as _mc_rv3f,
     )
     _USE_CORE = _mc_init()
-except Exception:
-    pass
+    if _USE_CORE:
+        print("[Meccha Chameleon Tools] meccha-core.dll loaded successfully")
+    else:
+        print("[Meccha Chameleon Tools] meccha-core.dll found but init failed — will use pymem")
+except ImportError:
+    print("[Meccha Chameleon Tools] meccha-core.dll not found — using pymem for all reads")
+except Exception as e:
+    print(f"[Meccha Chameleon Tools] meccha-core.dll load error: {e} — using pymem")
 
 def rp(pm, addr):
     if _USE_CORE:

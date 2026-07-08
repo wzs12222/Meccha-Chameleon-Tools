@@ -129,7 +129,7 @@ Camouflage     → loader-based bridge injection (port 50262) for mesh painting
 
 ## Changelog
 
-### v1.9.0-wow — Async Rendering, C++ Memory Engine, Team Colors
+### v1.9.1-wow — Async Rendering, C++ Memory Engine, Team Colors
 - **Async rendering** — game data reads moved to background thread, paintEvent reads from cache
 - **C++ memory engine** — optional meccha-core.dll, falls back to pymem if unavailable
 - **Two color modes** — Relative Team (enemy/ally) and Absolute Team (hunter/survivor)
